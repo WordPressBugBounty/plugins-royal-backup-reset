@@ -4,10 +4,10 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.12
+ * Version: 1.0.13
  * Requires at least: 5.0
  * Requires PHP: 7.4
- * Tested up to: 6.9
+ * Tested up to: 6.9.1
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: royal-backup-reset
