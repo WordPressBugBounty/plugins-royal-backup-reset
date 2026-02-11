@@ -1,7 +1,7 @@
 === Royal WP Backup, Restore and Database Reset - Website Backups made Easy ===
 Contributors: wproyal
 Tags: backup, cloud backup, database backup, restore, reset database
-Stable tag: 1.0.13
+Stable tag: 1.0.14
 Requires at least: 5.0
 Tested up to: 6.9.1
 Requires PHP: 7.4
@@ -122,13 +122,17 @@ This feature is mainly for testers or for those who want to reset WP to fresh in
 
 == Screenshots ==
 
-1. Main backup interface showing existing backups
-2. Backup creation with file selection options
-3. Restore component selection modal
+1. Automatic Backup Reminder in Mini Popup Window
+2. Main Backup Page
+3. Main Backup Restore Page
 4. Database reset options
-5. Settings page for default preferences
+5. Mini Backup Icon
+6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.14 =
+* Performance Improvements.
+
 = 1.0.13 =
 * Minor Changes.
 

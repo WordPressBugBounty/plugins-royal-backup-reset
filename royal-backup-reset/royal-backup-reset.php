@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.13
+ * Version: 1.0.14
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.1
@@ -18,6 +18,27 @@
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
+}
+
+// Prevent Freemius activation redirect when pending template edit exists.
+// This must be added early, before Freemius loads.
+// Note: The filter name uses hyphens (slug: royal-backup-reset) not underscores.
+add_filter( 'fs_redirect_on_activation_royal-backup-reset', 'royalbr_maybe_skip_activation_redirect' );
+
+/**
+ * Conditionally prevents Freemius activation redirect during template edit flow.
+ *
+ * @since 1.0.0
+ * @param bool $redirect Whether to redirect.
+ * @return bool False to prevent redirect, original value otherwise.
+ */
+function royalbr_maybe_skip_activation_redirect( $redirect ) {
+	// Check if we're returning from a template edit flow.
+	// The wpr_pending_template parameter now contains the edit URL (not just "1").
+	if ( isset( $_GET['wpr_pending_template'] ) || get_transient( 'wpr_pending_template_edit' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return false; // Prevent redirect.
+	}
+	return $redirect;
 }
 
 // Prevent dual loading - if core already loaded by another version, bail out
@@ -181,7 +202,7 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.12' );
+	define( 'ROYALBR_VERSION', '1.0.14' );
 }
 
 // Initialize plugin-wide constants including paths and configuration.
@@ -386,6 +407,7 @@ class RoyalBackupReset {
 		add_action( 'wp_ajax_royalbr_test_scheduled_files', array( $this, 'test_scheduled_files_ajax' ) );
 		add_action( 'wp_ajax_royalbr_test_scheduled_database', array( $this, 'test_scheduled_database_ajax' ) );
 		add_action( 'wp_ajax_royalbr_dismiss_backup_reminder', array( $this, 'dismiss_backup_reminder_ajax' ) );
+		add_action( 'wp_ajax_royalbr_clear_pending_template_edit', array( $this, 'clear_pending_template_edit_ajax' ) );
 		add_action( 'wp_ajax_royalbr_gdrive_get_auth_url', array( $this, 'gdrive_get_auth_url_ajax' ) );
 		add_action( 'wp_ajax_royalbr_gdrive_disconnect', array( $this, 'gdrive_disconnect_ajax' ) );
 		add_action( 'wp_ajax_royalbr_dropbox_get_auth_url', array( $this, 'dropbox_get_auth_url_ajax' ) );
@@ -418,6 +440,9 @@ class RoyalBackupReset {
 
 		register_activation_hook( __FILE__, array( $this, 'activate' ) );
 		register_deactivation_hook( __FILE__, array( $this, 'deactivate' ) );
+
+		// Skip Freemius redirect when pending template edit exists.
+		add_action( 'admin_init', array( $this, 'skip_activation_redirect_for_template_edit' ), 1 );
 	}
 
 	/**
@@ -486,6 +511,22 @@ class RoyalBackupReset {
 
 		// Register filter to exclude specific directory types from backups.
 		add_filter( 'royalbr_exclude_directory', array( $this, 'exclude_git_worktrees' ), 10, 3 );
+	}
+
+	/**
+	 * Prevents activation redirect when there's a pending template edit.
+	 *
+	 * When Royal Elementor Addons activates this plugin during a template edit flow,
+	 * we need to prevent Freemius from redirecting to the plugin's admin page.
+	 *
+	 * @since 1.0.0
+	 */
+	public function skip_activation_redirect_for_template_edit() {
+		// Check if we're returning from a template edit flow.
+		if ( isset( $_GET['wpr_pending_template'] ) || get_transient( 'wpr_pending_template_edit' ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			// Delete Freemius's activation transient to prevent redirect.
+			delete_transient( 'fs_plugin_royal-backup-reset_activated' );
+		}
 	}
 
 	/**
@@ -714,12 +755,61 @@ class RoyalBackupReset {
 		// Detect if we're on pages where backup reminder should be shown.
 		global $pagenow;
 		$is_importer_page   = ( 'admin.php' === $pagenow && ! empty( $_GET['import'] ) );
-		$is_reminder_page   = in_array( $hook, array( 'themes.php', 'theme-install.php', 'plugins.php', 'plugin-install.php', 'update-core.php' ), true ) || $is_importer_page;
-		$user_id            = get_current_user_id();
+		$reminder_pages     = array( 'themes.php', 'theme-install.php', 'plugins.php', 'plugin-install.php', 'update-core.php' );
+
+		/**
+		 * Filters the list of admin page hooks where the backup reminder should be shown.
+		 *
+		 * @since 1.0.13
+		 * @param array  $reminder_pages List of page hooks.
+		 * @param string $hook           Current admin page hook.
+		 */
+		$reminder_pages   = apply_filters( 'royalbr_reminder_pages', $reminder_pages, $hook );
+		$is_reminder_page = in_array( $hook, $reminder_pages, true ) || $is_importer_page;
+		$user_id          = get_current_user_id();
 		$reminder_dismissed = (bool) get_user_meta( $user_id, 'royalbr_dismiss_backup_reminder', true );
 
-		// Load backup reminder script on themes/plugins pages if not dismissed.
-		if ( $is_reminder_page ) {
+		// Check for pending template edit from Royal Elementor Addons.
+		$pending_template_data = get_transient( 'wpr_pending_template_edit' );
+		$pending_template_edit = false;
+		$pending_template_name = '';
+
+		// Handle array format (new) or string format (legacy).
+		if ( is_array( $pending_template_data ) ) {
+			$pending_template_edit = ! empty( $pending_template_data['url'] ) ? $pending_template_data['url'] : false;
+			$pending_template_name = ! empty( $pending_template_data['name'] ) ? $pending_template_data['name'] : '';
+		} elseif ( ! empty( $pending_template_data ) ) {
+			// Legacy string format (just URL).
+			$pending_template_edit = $pending_template_data;
+		}
+
+		// Also check for URL parameters (in case transient was already cleared).
+		// The parameters now contain the encoded edit URL and template name for reliable redirect.
+		// Skip if user is coming back from Elementor editor (browser back button).
+		$referrer = isset( $_SERVER['HTTP_REFERER'] ) ? $_SERVER['HTTP_REFERER'] : '';
+		$is_back_from_editor = ! empty( $referrer ) && strpos( $referrer, 'post.php' ) !== false && strpos( $referrer, 'action=elementor' ) !== false;
+
+		if ( ! $pending_template_edit && isset( $_GET['wpr_pending_template'] ) && ! $is_back_from_editor ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$param_value = sanitize_text_field( wp_unslash( $_GET['wpr_pending_template'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			// If it's a valid URL, use it; otherwise just mark as pending
+			if ( filter_var( $param_value, FILTER_VALIDATE_URL ) || strpos( $param_value, 'post.php' ) !== false ) {
+				$pending_template_edit = $param_value;
+			} else {
+				$pending_template_edit = true;
+			}
+			// Also get template name from URL parameter if not already set
+			if ( empty( $pending_template_name ) && isset( $_GET['wpr_template_name'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$pending_template_name = sanitize_text_field( wp_unslash( $_GET['wpr_template_name'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			}
+		}
+
+		// Force reminder page mode when there's a pending template edit.
+		if ( $pending_template_edit ) {
+			$is_reminder_page = true;
+		}
+
+		// Load backup reminder script on themes/plugins pages or when there's a pending template edit.
+		if ( $is_reminder_page || $pending_template_edit ) {
 			wp_enqueue_script(
 				'royalbr-backup-reminder-js',
 				ROYALBR_ASSETS_URL . 'backup-reminder.js',
@@ -759,6 +849,8 @@ class RoyalBackupReset {
 				'is_reminder_page'           => $is_reminder_page,
 				'reminder_dismissed'         => $reminder_dismissed,
 				'reminder_popup_mode'        => ROYALBR_Options::get_royalbr_option( 'royalbr_reminder_popup_mode', 'allow_dismiss' ),
+				'pending_template_edit'      => $pending_template_edit ? $pending_template_edit : false,
+				'pending_template_name'      => $pending_template_name,
 				'reminder_strings'           => array(
 					'title'                  => __( 'Create a backup first?', 'royal-backup-reset' ),
 					'theme_activation'       => __( 'Consider backing up before activating themes. Takes less than a minute!', 'royal-backup-reset' ),
@@ -771,6 +863,7 @@ class RoyalBackupReset {
 					'bulk_theme_update'      => __( 'Consider backing up before updating multiple themes. Takes less than a minute!', 'royal-backup-reset' ),
 					'core_update'            => __( 'Consider backing up before updating WordPress. Takes less than a minute!', 'royal-backup-reset' ),
 					'wp_import'              => __( 'Consider backing up before importing content. Takes less than a minute!', 'royal-backup-reset' ),
+					'template_edit'          => __( 'Consider backing up before editing this template. Takes less than a minute!', 'royal-backup-reset' ),
 					'dismiss_permanent'      => __( "Don't show again", 'royal-backup-reset' ),
 					'skip_now'               => __( 'Skip Now', 'royal-backup-reset' ),
 					'proceed_without_backup' => __( 'Proceed without backup', 'royal-backup-reset' ),
@@ -838,6 +931,23 @@ class RoyalBackupReset {
 		update_user_meta( $user_id, 'royalbr_dismiss_backup_reminder', true );
 
 		wp_send_json_success( array( 'dismissed' => true ) );
+	}
+
+	/**
+	 * Clears the pending template edit transient set by Royal Elementor Addons.
+	 *
+	 * @since 1.0.0
+	 */
+	public function clear_pending_template_edit_ajax() {
+		check_ajax_referer( 'royalbr_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( esc_html__( 'Unauthorized access.', 'royal-backup-reset' ) );
+		}
+
+		delete_transient( 'wpr_pending_template_edit' );
+
+		wp_send_json_success();
 	}
 
 	/**

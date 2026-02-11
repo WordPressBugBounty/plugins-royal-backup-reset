@@ -63,6 +63,31 @@
         interceptWpImport();
 
         config.initialized = true;
+
+        // Check for pending template edit from Royal Elementor Addons
+        if (royalbr_admin_bar.pending_template_edit) {
+            config.pendingActivationUrl = royalbr_admin_bar.pending_template_edit;
+            config.pendingAction = 'template-edit';
+            config.pendingItemName = royalbr_admin_bar.pending_template_name || 'Template';
+            showBackupReminder('template-edit');
+
+            // Clear the transient via AJAX
+            $.post(royalbr_admin_bar.ajax_url, {
+                action: 'royalbr_clear_pending_template_edit',
+                nonce: royalbr_admin_bar.nonce
+            });
+
+            // Remove wpr_pending_template and wpr_template_name from URL to prevent
+            // backup reminder showing again when user uses browser back button
+            if (window.history && window.history.replaceState) {
+                var cleanUrl = window.location.href
+                    .replace(/([?&])wpr_pending_template=[^&]*(&|$)/, '$1')
+                    .replace(/([?&])wpr_template_name=[^&]*(&|$)/, '$1')
+                    .replace(/[?&]$/, '')
+                    .replace(/&$/, '');
+                window.history.replaceState(null, '', cleanUrl);
+            }
+        }
     }
 
     /**
@@ -89,6 +114,7 @@
             '<div class="royalbr-reminder-text">' +
             '<strong>' + escapeHtml(strings.title) + '</strong>' +
             '<p class="royalbr-reminder-description"></p>' +
+            '<a href="https://youtu.be/4SZ9r8mOt1M?t=26" target="_blank" class="royalbr-reminder-video-guide">Video Guide <span class="dashicons dashicons-video-alt3"></span></a>' +
             '</div>' +
             '</div>' +
             '<div class="royalbr-reminder-actions">' +
@@ -122,6 +148,7 @@
             bulk_theme_update: 'Consider backing up before updating multiple themes.',
             core_update: 'Consider backing up before updating WordPress.',
             wp_import: 'Consider backing up before importing content.',
+            template_edit: 'Consider backing up before editing this template.',
             dismiss_permanent: "Don't show again",
             skip_now: 'Skip Now',
             proceed_without_backup: 'Proceed without backup'
@@ -161,6 +188,8 @@
                 return 'Before updating WordPress';
             case 'wp-import':
                 return 'Before WordPress import';
+            case 'template-edit':
+                return name ? 'Before editing template: ' + name : 'Before editing template';
             default:
                 return 'Before changes';
         }
@@ -191,6 +220,8 @@
                 return strings.core_update;
             case 'wp-import':
                 return strings.wp_import;
+            case 'template-edit':
+                return strings.template_edit || strings.theme_activation;
             case 'theme-activation':
             default:
                 return strings.theme_activation;
@@ -878,6 +909,8 @@
             actionText = 'WordPress update';
         } else if (config.pendingAction === 'wp-import') {
             actionText = 'content import';
+        } else if (config.pendingAction === 'template-edit') {
+            actionText = 'template editing';
         } else {
             actionText = 'theme activation';
         }

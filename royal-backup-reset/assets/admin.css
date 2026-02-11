@@ -792,6 +792,7 @@
 
 /* Backup ID Styling (when shown with custom name) */
 .royalbr-backup-id {
+    display: block;
     font-weight: normal;
     color: #86868b;
     font-size: 13px;
@@ -2533,6 +2534,27 @@ ul.royalbr-restore-components-list li.error::after {
     color: #6e6e73;
     margin: 0;
     line-height: 1.4;
+}
+
+.royalbr-reminder-video-guide {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: #cc0000;
+    text-decoration: none;
+    margin-top: 6px;
+}
+
+.royalbr-reminder-video-guide:hover {
+    color: #990000;
+    text-decoration: underline;
+}
+
+.royalbr-reminder-video-guide .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
 }
 
 .royalbr-reminder-actions {
