@@ -291,6 +291,11 @@ class ROYALBR_Reset {
 		$royalbr_maybe_later_time  = get_option( 'royalbr_maybe_later_time' );
 		$royalbr_rating_dismissed  = get_option( 'royalbr_rating_dismissed' );
 		$royalbr_already_rated     = get_option( 'royalbr_already_rated' );
+		$royalbr_has_restored      = get_option( 'royalbr_has_restored' );
+
+		// Preserve backup reminder banner options.
+		$royalbr_backup_reminder_banner_dismissed  = get_option( 'royalbr_backup_reminder_banner_dismissed' );
+		$royalbr_backup_reminder_banner_later_time = get_option( 'royalbr_backup_reminder_banner_later_time' );
 
 		// Preserve backup location options.
 		$royalbr_backup_loc_local     = get_option( 'royalbr_backup_loc_local' );
@@ -520,6 +525,17 @@ class ROYALBR_Reset {
 		}
 		if ( false !== $royalbr_already_rated ) {
 			update_option( 'royalbr_already_rated', $royalbr_already_rated );
+		}
+		if ( false !== $royalbr_has_restored ) {
+			update_option( 'royalbr_has_restored', $royalbr_has_restored );
+		}
+
+		// Restore backup reminder banner options.
+		if ( false !== $royalbr_backup_reminder_banner_dismissed ) {
+			update_option( 'royalbr_backup_reminder_banner_dismissed', $royalbr_backup_reminder_banner_dismissed );
+		}
+		if ( false !== $royalbr_backup_reminder_banner_later_time ) {
+			update_option( 'royalbr_backup_reminder_banner_later_time', $royalbr_backup_reminder_banner_later_time );
 		}
 
 		// Restore backup location options.

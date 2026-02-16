@@ -2,7 +2,8 @@
 /**
  * Rating Notice Class
  *
- * Displays a rating prompt to administrators after plugin has been active for 14 days.
+ * Displays a rating prompt to administrators after 3 backups exist in history
+ * or after the first successful restore.
  *
  * @package RoyalBackupReset
  * @since   1.0.0
@@ -22,14 +23,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 class RoyalBR_Rating_Notice {
 
 	/**
-	 * The past date threshold for showing the notice.
-	 *
-	 * @since 1.0.0
-	 * @var   int
-	 */
-	private $past_date;
-
-	/**
 	 * Constructor.
 	 *
 	 * Sets up hooks for rating notice functionality.
@@ -39,6 +32,7 @@ class RoyalBR_Rating_Notice {
 	public function __construct() {
 		add_action( 'admin_init', array( $this, 'init_rating_notice' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_scripts' ) );
+		add_action( 'royalbr_restore_completed', array( $this, 'mark_restore_completed' ) );
 
 		// AJAX handlers.
 		add_action( 'wp_ajax_royalbr_rating_dismiss', array( $this, 'dismiss_notice' ) );
@@ -60,29 +54,37 @@ class RoyalBR_Rating_Notice {
 			return;
 		}
 
-		// Set activation time for existing users who update (not just fresh installs).
-		if ( false === get_option( 'royalbr_activation_time' ) ) {
-			update_option( 'royalbr_activation_time', strtotime( 'now' ) );
+		$has_restored   = ! empty( get_option( 'royalbr_has_restored', false ) );
+		$backup_history = get_option( 'royalbr_backup_history', array() );
+		$backups        = isset( $backup_history['backups'] ) ? $backup_history['backups'] : array();
+
+		if ( ! $has_restored && count( $backups ) < 3 ) {
+			return;
 		}
 
-		$this->past_date = false === get_option( 'royalbr_maybe_later_time' )
-			? strtotime( '-14 days' )
-			: strtotime( '-7 days' );
-
-		$this->check_install_time();
+		$this->check_display_conditions();
 	}
 
 	/**
-	 * Check if enough time has passed since installation to show the notice.
+	 * Set flag when a restore completes successfully.
 	 *
 	 * @since 1.0.0
 	 */
-	public function check_install_time() {
-		$install_date = get_option( 'royalbr_activation_time' );
+	public function mark_restore_completed() {
+		update_option( 'royalbr_has_restored', true );
+	}
 
-		if ( false === get_option( 'royalbr_maybe_later_time' ) && false !== $install_date && $this->past_date >= $install_date ) {
+	/**
+	 * Check if conditions are met to display the rating notice.
+	 *
+	 * @since 1.0.0
+	 */
+	public function check_display_conditions() {
+		$maybe_later_time = get_option( 'royalbr_maybe_later_time' );
+
+		if ( false === $maybe_later_time ) {
 			add_action( 'admin_notices', array( $this, 'render_notice' ) );
-		} elseif ( false !== get_option( 'royalbr_maybe_later_time' ) && $this->past_date >= get_option( 'royalbr_maybe_later_time' ) ) {
+		} elseif ( strtotime( '-7 days' ) >= $maybe_later_time ) {
 			add_action( 'admin_notices', array( $this, 'render_notice' ) );
 		}
 	}

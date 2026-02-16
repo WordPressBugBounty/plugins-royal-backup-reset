@@ -1467,6 +1467,10 @@ class ROYALBR_Restore {
 			'royalbr_maybe_later_time',
 			'royalbr_rating_dismissed',
 			'royalbr_already_rated',
+			'royalbr_has_restored',
+			// Backup reminder banner options.
+			'royalbr_backup_reminder_banner_dismissed',
+			'royalbr_backup_reminder_banner_later_time',
 			// Backup location options.
 			'royalbr_backup_loc_local',
 			'royalbr_backup_loc_gdrive',

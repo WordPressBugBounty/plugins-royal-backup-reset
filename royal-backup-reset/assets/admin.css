@@ -1149,8 +1149,67 @@ label[for="royalbr-backup-name"] + .description {
     padding: 0 20px 20px;
     text-align: right;
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 10px;
+}
+
+.royalbr-modal-footer.royalbr-modal-footer-with-link {
+    justify-content: space-between;
+}
+
+.royalbr-modal-footer-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.royalbr-modal-footer-link {
+    text-decoration: none;
+    color: #6e6e73;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    position: relative;
+}
+
+.royalbr-modal-footer-link:hover {
+    color: #4f5bd5;
+}
+
+.royalbr-modal-footer-link .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.royalbr-modal-footer-link-tooltip {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    margin-bottom: 6px;
+    padding: 6px 10px;
+    background: #1d1d1f;
+    color: #fff;
+    font-size: 11px;
+    line-height: 1.4;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.royalbr-modal-footer-link-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 16px;
+    border: 5px solid transparent;
+    border-top-color: #1d1d1f;
+}
+
+.royalbr-modal-footer-link:hover .royalbr-modal-footer-link-tooltip {
+    display: block;
 }
 
 .royalbr-modal.royalbr-finished .royalbr-modal-footer {
@@ -2978,6 +3037,134 @@ ul.royalbr-restore-components-list li.error::after {
 
     .royalbr-maybe-later,
     .royalbr-already-rated {
+        margin-left: 0;
+        margin-top: 8px;
+    }
+}
+
+/* ========================================================================
+   Backup Reminder Banner
+   ======================================================================== */
+
+.royalbr-backup-reminder-banner {
+    padding: 10px 20px;
+    border-top: 0;
+    border-bottom: 0;
+    border-left-color: #4f5bd5 !important;
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.royalbr-backup-reminder-banner-logo {
+    margin-right: 20px;
+    width: 80px;
+    height: 80px;
+    flex-shrink: 0;
+}
+
+.royalbr-backup-reminder-banner-logo img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+}
+
+.royalbr-backup-reminder-banner-content h3 {
+    margin-bottom: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d1d1f;
+}
+
+.royalbr-backup-reminder-banner-content p {
+    margin-top: 3px;
+    margin-bottom: 15px;
+    color: #6e6e73;
+}
+
+.royalbr-backup-reminder-banner-buttons {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.royalbr-backup-reminder-banner-buttons .button-primary {
+    background: #4f5bd5;
+    border-color: #4f5bd5;
+}
+
+.royalbr-backup-reminder-banner-buttons .button-primary:hover {
+    background: #3d47a8;
+    border-color: #3d47a8;
+}
+
+.royalbr-backup-reminder-banner-later {
+    text-decoration: none;
+    margin-left: 12px;
+    font-size: 14px;
+    cursor: pointer;
+    color: #6e6e73;
+}
+
+.royalbr-backup-reminder-banner-later:hover {
+    color: #4f5bd5;
+}
+
+.royalbr-backup-reminder-banner-later .dashicons {
+    vertical-align: middle;
+}
+
+.royalbr-backup-reminder-banner .notice-dismiss {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 1px;
+    border: none;
+    margin: 0;
+    padding: 9px;
+    background: none;
+    color: #787c82;
+    cursor: pointer;
+}
+
+.royalbr-backup-reminder-banner .notice-dismiss:before {
+    background: none;
+    color: #787c82;
+    content: '\f153';
+    display: block;
+    font: normal 16px/20px dashicons;
+    speak: never;
+    height: 20px;
+    text-align: center;
+    width: 20px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.royalbr-backup-reminder-banner .notice-dismiss:hover:before {
+    color: #d63638;
+}
+
+@media (max-width: 782px) {
+    .royalbr-backup-reminder-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 20px;
+    }
+
+    .royalbr-backup-reminder-banner-logo {
+        margin-right: 0;
+        margin-bottom: 15px;
+        width: 60px;
+        height: 60px;
+    }
+
+    .royalbr-backup-reminder-banner-buttons {
+        justify-content: center;
+    }
+
+    .royalbr-backup-reminder-banner-later {
         margin-left: 0;
         margin-top: 8px;
     }

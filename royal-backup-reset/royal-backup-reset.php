@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.14
+ * Version: 1.0.15
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.1
@@ -157,6 +157,11 @@ function royalbr_uninstall_cleanup() {
 	delete_option( 'royalbr_maybe_later_time' );
 	delete_option( 'royalbr_rating_dismissed' );
 	delete_option( 'royalbr_already_rated' );
+	delete_option( 'royalbr_has_restored' );
+
+	// Clean up backup reminder banner options.
+	delete_option( 'royalbr_backup_reminder_banner_dismissed' );
+	delete_option( 'royalbr_backup_reminder_banner_later_time' );
 
 	// Delete site options (for multisite compatibility).
 	delete_site_option( 'royalbr_restore_in_progress' );
@@ -202,7 +207,7 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.14' );
+	define( 'ROYALBR_VERSION', '1.0.15' );
 }
 
 // Initialize plugin-wide constants including paths and configuration.
@@ -224,6 +229,9 @@ require_once ROYALBR_INCLUDES_DIR . 'class-royalbr-tour.php';
 
 // Load rating notice class.
 require_once ROYALBR_INCLUDES_DIR . 'rating/class-royalbr-rating-notice.php';
+
+// Load backup reminder banner class.
+require_once ROYALBR_INCLUDES_DIR . 'rating/class-royalbr-backup-reminder-banner.php';
 
 /**
  * Main Royal Backup & Reset Plugin Class.
@@ -3047,9 +3055,15 @@ class RoyalBackupReset {
 					</div>
 					<?php endif; ?>
 				</div>
-				<div class="royalbr-modal-footer">
-					<button type="button" class="button" id="royalbr-backup-cancel"><?php esc_html_e( 'Cancel', 'royal-backup-reset' ); ?></button>
-					<button type="button" class="button button-primary" id="royalbr-backup-proceed"><?php esc_html_e( 'Proceed', 'royal-backup-reset' ); ?></button>
+				<div class="royalbr-modal-footer royalbr-modal-footer-with-link">
+					<a href="https://wordpress.org/support/plugin/royal-backup-reset/" target="_blank" rel="noopener noreferrer" class="royalbr-modal-footer-link">
+						<span class="dashicons dashicons-sos"></span> <?php esc_html_e( 'Have a Question? Contact Us', 'royal-backup-reset' ); ?>
+						<span class="royalbr-modal-footer-link-tooltip"><?php esc_html_e( 'Troubleshoot, Feature Request, Presale Question or Anything else...', 'royal-backup-reset' ); ?></span>
+					</a>
+					<div class="royalbr-modal-footer-buttons">
+						<button type="button" class="button" id="royalbr-backup-cancel"><?php esc_html_e( 'Cancel', 'royal-backup-reset' ); ?></button>
+						<button type="button" class="button button-primary" id="royalbr-backup-proceed"><?php esc_html_e( 'Proceed', 'royal-backup-reset' ); ?></button>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -3229,9 +3243,15 @@ class RoyalBackupReset {
 				<div class="royalbr-modal-body">
 					<p id="royalbr-modal-message"></p>
 				</div>
-				<div class="royalbr-modal-footer">
-					<button type="button" class="button" id="royalbr-modal-cancel"><?php esc_html_e( 'Cancel', 'royal-backup-reset' ); ?></button>
-					<button type="button" class="button button-primary" id="royalbr-modal-confirm"><?php esc_html_e( 'Proceed', 'royal-backup-reset' ); ?></button>
+				<div class="royalbr-modal-footer royalbr-modal-footer-with-link">
+					<a href="https://wordpress.org/support/plugin/royal-backup-reset/" target="_blank" rel="noopener noreferrer" class="royalbr-modal-footer-link">
+						<span class="dashicons dashicons-sos"></span> <?php esc_html_e( 'Have a Question? Contact Us', 'royal-backup-reset' ); ?>
+						<span class="royalbr-modal-footer-link-tooltip"><?php esc_html_e( 'Troubleshoot, Feature Request, Presale Question or Anything else...', 'royal-backup-reset' ); ?></span>
+					</a>
+					<div class="royalbr-modal-footer-buttons">
+						<button type="button" class="button" id="royalbr-modal-cancel"><?php esc_html_e( 'Cancel', 'royal-backup-reset' ); ?></button>
+						<button type="button" class="button button-primary" id="royalbr-modal-confirm"><?php esc_html_e( 'Proceed', 'royal-backup-reset' ); ?></button>
+					</div>
 				</div>
 			</div>
 		</div>
@@ -3435,9 +3455,15 @@ class RoyalBackupReset {
 						<?php endif; ?>
 					</form>
 				</div>
-				<div class="royalbr-modal-footer">
-					<button type="button" class="button" id="royalbr-component-selection-cancel"><?php esc_html_e( 'Cancel', 'royal-backup-reset' ); ?></button>
-					<button type="button" class="button button-primary" id="royalbr-component-selection-proceed"><?php esc_html_e( 'Continue', 'royal-backup-reset' ); ?></button>
+				<div class="royalbr-modal-footer royalbr-modal-footer-with-link">
+					<a href="https://wordpress.org/support/plugin/royal-backup-reset/" target="_blank" rel="noopener noreferrer" class="royalbr-modal-footer-link">
+						<span class="dashicons dashicons-sos"></span> <?php esc_html_e( 'Have a Question? Contact Us', 'royal-backup-reset' ); ?>
+						<span class="royalbr-modal-footer-link-tooltip"><?php esc_html_e( 'Troubleshoot, Feature Request, Presale Question or Anything else...', 'royal-backup-reset' ); ?></span>
+					</a>
+					<div class="royalbr-modal-footer-buttons">
+						<button type="button" class="button" id="royalbr-component-selection-cancel"><?php esc_html_e( 'Cancel', 'royal-backup-reset' ); ?></button>
+						<button type="button" class="button button-primary" id="royalbr-component-selection-proceed"><?php esc_html_e( 'Continue', 'royal-backup-reset' ); ?></button>
+					</div>
 				</div>
 			</div>
 		</div>
