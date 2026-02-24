@@ -227,6 +227,7 @@ jQuery(document).ready(function($) {
         var $tab = $('.royalbr-nav-tab[data-tab="' + hash + '"]');
         if ($tab.length) {
             $tab.trigger('click');
+            window.scrollTo(0, 0);
         }
     }
 

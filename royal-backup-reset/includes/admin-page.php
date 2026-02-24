@@ -547,6 +547,11 @@ if ( ! defined( 'ABSPATH' ) ) {
         <div id="free-vs-pro" class="royalbr-tab-content">
             <div class="royalbr-premium-section">
 
+                <!-- Video Overview -->
+                <div class="royalbr-promo-video">
+                    <iframe src="https://www.youtube.com/embed/toQF4kf02nU" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                </div>
+
                 <!-- Features Comparison Table -->
                 <section>
                     <table class="royalbr-feat-table">

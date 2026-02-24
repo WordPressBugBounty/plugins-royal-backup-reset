@@ -1996,6 +1996,14 @@ jQuery(document).ready(function($) {
         $('#royalbr-pro-modal-upgrade-btn').on('click', function(e) {
             e.preventDefault();
             $modal.hide();
+
+            // If already on the plugin page, switch tab directly
+            if ($('.royalbr-nav-tab[data-tab="free-vs-pro"]').length) {
+                e.stopImmediatePropagation();
+                $('.royalbr-nav-tab[data-tab="free-vs-pro"]').trigger('click');
+                return;
+            }
+
             if (typeof royalbr_admin_bar !== 'undefined' && royalbr_admin_bar.admin_page_url) {
                 window.location.href = royalbr_admin_bar.admin_page_url + '#free-vs-pro';
             }

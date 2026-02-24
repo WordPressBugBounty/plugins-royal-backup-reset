@@ -1,7 +1,7 @@
 === Royal WP Backup, Restore and Database Reset - Website Backups made Easy ===
 Contributors: wproyal
 Tags: backup, cloud backup, database backup, restore, reset database
-Stable tag: 1.0.15
+Stable tag: 1.0.16
 Requires at least: 5.0
 Tested up to: 6.9.1
 Requires PHP: 7.4
@@ -32,18 +32,21 @@ Royal Backup, Restore & Reset is a comprehensive WordPress plugin that provides 
 
 = 🌟Royal Backup PRO Version - Key Features =
 
+https://www.youtube.com/watch?v=toQF4kf02nU
+
 * **Backup Core Wordpress Files** - Backup all core WordPress files including wp-admin, wp-includes, and essential root files such as wp-config.php, .htaccess, and more. If something damages or alters these core files — such as viruses, hacker attacks, plugin updates, theme changes, or WordPress updates — you can always revert and restore the original WordPress files.
 * **Schedule Backups** - Schedule backup to run every 1 hour, 12 hours, daily, weekly, once every two weeks and monthly. So you can ‘set and forget’ about Backups. Backup Schedule can be configured for Files and databases separately.
 * **Google Drive Cloud Backup** - Store backups securely on Google Drive. One Click Configuration.
 * **Dropbox Cloud Backup** - Store backups securely on Dropbox. One Click Configuration.
-* **Amazon S3 Cloud Backup** - Store backups securely on Amazon S3. Other Popular Cloud Backup Providers Coming soon.
+* **Amazon S3 Cloud Backup** - Store backups securely on Amazon S3. Other Popular Cloud Backup Providers.
 * **Save Backups in multiple locations simultaneously. ** - Backups can be created and saved simultaneously on your wordpress site and on Cloud storage (Google Drive, Dropbox, Amazon S3) as well. If one Backup location fails, you'll still have the option to restore or download from the others.
 * **Backup Retention** - Automatically delete older backups to save disk space while retaining recent ones — with full control over how many backups to keep.
 * **Selective Backup** - Choose specific components to backup — such as the database, plugins, themes, WordPress core files, or uploads — individually.
 * **Selective Restore** - Choose specific components to restore - such as the database, plugins, themes, WordPress core files, or uploads — individually.
 * **Backup Rename** - Rename your backups to improve identification, organization, and management.
 * **Customizable Defaults** - Save your preferred backup and restore settings as defaults — so you don’t need to preselect them every time you perform a backup or restore.
-* **Incremental Backups** - Backup only the files and folders that have changed since your last backup, saving both time and storage space.
+* **Incremental Backups (Coming Soon)** - Backup only the files and folders that have changed since your last backup, saving both time and storage space.
+* **Wordpress Multisite Network Support (Coming Soon)** - Full support for WordPress Multisite networks, all WP Multisite files and databases will be stored in the backup.
 * **Clear Uploads Directory** - Perform a full cleanup of the uploads folder during a database reset for a completely fresh start.
 * **Priority Support** - Get direct support from the developers whenever you need help with your backups.
 
@@ -130,6 +133,9 @@ This feature is mainly for testers or for those who want to reset WP to fresh in
 6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.16 =
+* Performance Improvements.
+
 = 1.0.15 =
 * Performance Improvements.
 * Added Backup Reminder.
