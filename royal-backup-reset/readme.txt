@@ -1,36 +1,44 @@
-=== Royal WP Backup, Restore and Database Reset - Website Backups made Easy ===
+=== Royal Wordpress Backup & Restore Plugin - Backup Wordpress Sites Safely ===
 Contributors: wproyal
-Tags: backup, cloud backup, database backup, restore, reset database
-Stable tag: 1.0.16
+Tags: backup plugin, wordpress backup, database backup, restore, reset database
+Stable tag: 1.0.17
 Requires at least: 5.0
 Tested up to: 6.9.1
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Create a WP Website backups easy and Restore whenever you need. Schedule automatic backups, Cloud Backups, Database backup. Built in database reset tool.
+WordPress backup plugin to create full website backups and restore them easily, smart pre-update backup reminders, built-in database reset tool and more!
 
 == Description ==
 
-https://www.youtube.com/watch?v=4SZ9r8mOt1M
+Royal Backup & Restore is a powerful and **easy-to-use** WordPress backup plugin that helps you protect your website by creating full site backups, database backups, and automatic scheduled backups in just a few clicks. Whether you want to secure your website from crashes, plugin conflicts, hacking attempts, or update failures, this plugin ensures your WordPress site can always be **restored quickly and safely**.
 
-Royal Backup, Restore & Reset is a comprehensive WordPress plugin that provides complete backup, restore, and WP reset functionality for your WordPress website. Whether you need to create regular website backups, migrate your site, or database reset, this plugin has you covered.
+Unlike other WordPress backup plugins, Royal Backup includes a **unique smart** backup reminder system that **automatically prompts** you to create a backup before updating plugins, themes, or installing new ones — preventing accidental data loss.
+
+With Royal Backup, you can create complete WordPress backups including database, plugins, themes, uploads, and wordpress core files (PRO version), then restore your website instantly with one-click restore. The plugin also supports automatic backup scheduling (PRO version), allowing you to run hourly, daily, weekly, or monthly backups without manual effort.
+
+You can also securely store backups in **cloud storage** (PRO version) such as Google Drive, Dropbox, and Amazon S3, manage multiple backup locations, and perform selective backup and restore operations. Additionally, the built-in database reset tool lets you instantly reset WordPress to a fresh state without reinstalling.
 
 🚀 Visit Plugin [Homepage](https://royal-elementor-addons.com/royal-backup-reset/?ref=rea-wpo-pp-details-tab)
 
 = ✅Key Features of Free Version =
 
-* **Unique Feature - Backup Notification During Theme or Plugin Updates or Installation - No other plugin offers this feature** - ⏩ [See Video](https://www.youtube.com/watch?v=4SZ9r8mOt1M&t=27s). Plugin will remind you to make backup before activating or updating themes or plugins
+* **Unique Feature - Backup Notification During Theme or Plugin Updates or Installation - No other plugin offers this feature** - ⏩ [See Video](https://www.youtube.com/watch?v=4SZ9r8mOt1M&t=27s). Plugin will remind you to make wordpress backup before activating or updating themes or plugins
 * **Full Website Backups** - Backup your entire WordPress website including database, plugins, themes, uploads, and other files
 * **Full Website Restore** - Restore your entire WordPress website including database, plugins, themes, uploads, and other files
-* **Assign Custom Names to your Backups** - Assign custom names to backups for easy identification and organization.
-* **Backup Component Downloads** - Download individual backup components such as the database, plugins, themes, and more.
-* **Background Backup** - Feel free to refresh or close the browser window during backups — this won’t break the backup process.
-* **Backup & Restore Progress Tracking** - Real-time progress updates during backup and restore operations
-* **Database Reset** - Reset your WordPress database to a fresh installation - You do not need to reinstall WP, simple one click and your WP reverts to original fresh state.
+* **Assign Custom Names to your Backups** - Assign custom names to wordpress backups for easy identification and organization.
+* **Backup Component Downloads** - Download individual wordpress backup components such as the database, plugins, themes, and more.
+* **Background Backup** - Feel free to refresh or close the browser window during wordpress backups — this won’t break the backup process.
+* **Backup & Restore Progress Tracking** - Real-time progress updates during wordpress backup and restore operations
+* **Database Reset** - Reset your WordPress database to a fresh installation - You do not need to reinstall Wordpress, simple one click and your Wordpress reverts to original fresh state.
 * **Backup Management Simple User interface** - View, download, restore, and delete website backups from a simple interface
 
-= 🌟Royal Backup PRO Version - Key Features =
+= ✅Video overview of Backup Notification During Theme or Plugin Updates =
+
+https://www.youtube.com/watch?v=4SZ9r8mOt1M
+
+= 🌟Key Features of PRO Version =
 
 https://www.youtube.com/watch?v=toQF4kf02nU
 
@@ -44,9 +52,9 @@ https://www.youtube.com/watch?v=toQF4kf02nU
 * **Selective Backup** - Choose specific components to backup — such as the database, plugins, themes, WordPress core files, or uploads — individually.
 * **Selective Restore** - Choose specific components to restore - such as the database, plugins, themes, WordPress core files, or uploads — individually.
 * **Backup Rename** - Rename your backups to improve identification, organization, and management.
-* **Customizable Defaults** - Save your preferred backup and restore settings as defaults — so you don’t need to preselect them every time you perform a backup or restore.
+* **Customizable Defaults** - Save your preferred Wordpress backup and restore settings as defaults — so you don’t need to preselect them every time you perform a backup or restore.
 * **Incremental Backups (Coming Soon)** - Backup only the files and folders that have changed since your last backup, saving both time and storage space.
-* **Wordpress Multisite Network Support (Coming Soon)** - Full support for WordPress Multisite networks, all WP Multisite files and databases will be stored in the backup.
+* **Wordpress Multisite Network Support (Coming Soon)** - Full support for WordPress Multisite networks, all Wordpress Multisite files and databases will be stored in the backup.
 * **Clear Uploads Directory** - Perform a full cleanup of the uploads folder during a database reset for a completely fresh start.
 * **Priority Support** - Get direct support from the developers whenever you need help with your backups.
 
@@ -73,22 +81,22 @@ https://www.youtube.com/watch?v=toQF4kf02nU
 
 = WordPress Admin Method =
 
- 1. Go to you administration area in WordPress `Plugins > Add`
+ 1. Go to your administration area in WordPress `Plugins > Add`
  2. Look for `Royal Backup` (use search form)
  3. Click on Install and activate the plugin
  4. After activating Royal Backup plugin you will see it in the admin dashboard menu with the name Royal Backup
  5. Create your first backup using the "Create Backup" tab > Select what to include in the backup, Press "Start Backup Process" Button
  6. To Restore your backup navigate to Restore Site section, choose backup to restore and press Restore button
- 7. To Delete your backup navigate to Restore Site section and press Remove button. This will completle remove all backups files and folders. This action can't be undone
+ 7. To Delete your backup navigate to Restore Site section and press Remove button. This will completely remove all backups files and folders. This action can't be undone
 
 = FTP Method =
 
 1. Upload the `royal-backup-reset` folder to the `/wp-content/plugins/` directory
 2. Activate the Royal Backup, Restore & Reset plugin through the 'Plugins' menu in WordPress
-3. In the WP appearance menu go to in Royal Backup to start using the plugin
+3. In the Wordpress appearance menu go to in Royal Backup to start using the plugin
 4. Create your first backup using the "Create Backup" tab > Select what to include in the backup > Press "Start Backup Process" Button
-5. To Restor your backup navigate to Restore Site section, choose backup to restore and press Restore button
-6. To Delete your backup navigate to Restore Site section and press Remove button. This will completle remove all backups files and folders. This action can't be undone
+5. To Restore your backup navigate to Restore Site section, choose backup to restore and press Restore button
+6. To Delete your backup navigate to Restore Site section and press Remove button. This will completely remove all backups files and folders. This action can't be undone
 
 
 
@@ -96,7 +104,7 @@ https://www.youtube.com/watch?v=toQF4kf02nU
 
 = How to create My First Website Backup? =
 
-Navigate in Plugin main Menu - Look for "Royal Backup" Name in your WP admin dashboard, Navigate to "Create Backup" tab > Select what to include in the backup > Press "Start Backup Process" Button. Congratulations your first website backup is created.
+Navigate in Plugin main Menu - Look for "Royal Backup" Name in your Wordpress admin dashboard, Navigate to "Create Backup" tab > Select what to include in the backup > Press "Start Backup Process" Button. Congratulations your first website backup is created.
 
 = How to restore my Website Backup? =
 
@@ -117,11 +125,11 @@ A backup includes:
 * Plugins folder
 * Themes folder
 * Uploads folder (Where images, videos and similar files are stored)
-* WP Core files (Only In PRO Version)
+* Wordpress Core files (Only In PRO Version)
 
 = Is it safe to reset my database? =
 
-This feature is mainly for testers or for those who want to reset WP to fresh install and Start from Scratch. The database reset feature will delete all your Content and Settings. Your current user account will be preserved. **Always create a backup before resetting!**
+This feature is mainly for testers or for those who want to reset Wordpress to fresh install and Start from Scratch. The database reset feature will delete all your Content and Settings. Your current user account will be preserved. **Always create a backup before resetting!**
 
 == Screenshots ==
 
@@ -133,6 +141,9 @@ This feature is mainly for testers or for those who want to reset WP to fresh in
 6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.17 =
+* Minor Improvements.
+
 = 1.0.16 =
 * Performance Improvements.
 
