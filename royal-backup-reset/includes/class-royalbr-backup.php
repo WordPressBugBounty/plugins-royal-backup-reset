@@ -14,6 +14,7 @@ if (!defined('ABSPATH')) {
 }
 
 require_once ROYALBR_INCLUDES_DIR . 'database/class-royalbr-database-utility.php';
+require_once ROYALBR_INCLUDES_DIR . 'class-royalbr-binzip.php';
 
 /**
  * Core backup engine for WordPress database and filesystem archival.
@@ -539,6 +540,17 @@ class ROYALBR_Backup {
 		}
 
 		$this->use_zip_object = 'ZipArchive';
+
+		// Detect binary zip for more reliable archiving on constrained hosts
+		if ( 0 === $this->binzip ) {
+			$this->log( 'Checking if we have a zip executable available' );
+			$binzip = $this->detect_binary_zip();
+			if ( is_string( $binzip ) ) {
+				$this->log( 'Zip engine: found/will use binary zip: ' . $binzip );
+				$this->binzip = $binzip;
+				$this->use_zip_object = 'ROYALBR_BinZip';
+			}
+		}
 
 		// Define pre-compressed formats that waste CPU with additional compression
 		$this->extensions_to_not_compress = array(
@@ -1630,6 +1642,14 @@ class ROYALBR_Backup {
 	public function build_archive($create_from_dir, $whichone, $backup_file_basename, $index, $first_linked_index = false) {
 		if (function_exists('set_time_limit')) @set_time_limit(900); // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Required for long-running zip creation operations
 
+		global $royalbr_instance;
+
+		// Load split_every from task data (may have been reduced by try_split on prior runs)
+		$split_every_task = (int) $royalbr_instance->retrieve_task_data( 'split_every', 0 );
+		if ( $split_every_task > 0 ) {
+			$this->archive_max_size = max( $split_every_task, 25 ) * 1048576;
+		}
+
 		$original_index = $index;
 		$this->index = $index;
 		$this->first_linked_index = (false === $first_linked_index) ? 0 : $first_linked_index;
@@ -1665,8 +1685,6 @@ class ROYALBR_Backup {
 			}
 		}
 
-		global $royalbr_instance;
-
 		$this->clean_temporary_files('_' . $royalbr_instance->file_nonce . "-$whichone", 600);
 
 		$zip_name = $full_path . '.tmp';
@@ -1678,6 +1696,48 @@ class ROYALBR_Backup {
 
 		if (file_exists($zip_name)) {
 			$this->log("$zip_name exists, but not recently modified (assuming old run terminated)");
+		}
+
+		// When stuck (2+ failed resumptions), halve split size and finalize current archive
+		if ( $this->try_split ) {
+			$itext_check = empty( $index ) ? '' : ( $index + 1 );
+			$check_zip   = $this->royalbr_dir . '/' . $backup_file_basename . '-' . $whichone . $itext_check . '.zip';
+			$check_tmp   = $check_zip . '.tmp';
+
+			$examine_file = false;
+			if ( file_exists( $check_zip ) && filesize( $check_zip ) > 0 ) {
+				$examine_file = $check_zip;
+			} elseif ( file_exists( $check_tmp ) && filesize( $check_tmp ) > 0 ) {
+				$examine_file = $check_tmp;
+			}
+
+			if ( $examine_file && filesize( $examine_file ) > 50 * 1048576 ) {
+				$this->archive_max_size = max(
+					(int) ( $this->archive_max_size / 2 ),
+					25 * 1048576,
+					min( filesize( $examine_file ) - 1048576, $this->archive_max_size )
+				);
+				$royalbr_instance->save_task_data( 'split_every', (int) ( $this->archive_max_size / 1048576 ) );
+				$this->log( 'No check-in on last two runs; reducing zip split to: ' . round( $this->archive_max_size / 1048576, 1 ) . ' MB' );
+
+				// Finalize the .zip.tmp if it exists (rename to .zip)
+				if ( file_exists( $check_tmp ) && filesize( $check_tmp ) > 0 ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.rename_rename -- Atomic rename required for archive finalization
+					@rename( $check_tmp, $check_zip );
+					ROYALBR_Task_Scheduler::something_useful_happened();
+				}
+
+				// Bump index so next archive starts fresh
+				$index++;
+				$this->index = $index;
+
+				// Add the finalized file to files_existing
+				if ( ! isset( $files_existing ) ) {
+					$files_existing = array();
+				}
+				$files_existing[] = basename( $check_zip );
+			}
+			$this->try_split = false;
 		}
 
 		if (isset($files_existing)) {
@@ -2477,28 +2537,43 @@ class ROYALBR_Backup {
 			return true;
 		}
 
+		$this->log( sprintf(
+			'Starting zip batch: %d files, %d dirs queued (memory: %s)',
+			count( $this->files_queue ),
+			count( $this->directories_queue ),
+			size_format( memory_get_usage( true ) )
+		) );
+
 		$data_added_since_reopen = 0;
 		$files_zipadded_since_open = array();
+		$use_binzip = ( 'ROYALBR_BinZip' === $this->use_zip_object );
 
-		$zip = new ZipArchive;
-		if (file_exists($zipfile)) {
-			$original_size = filesize($zipfile);
-			if ($original_size > 0) {
-				$opencode = $zip->open($zipfile);
-				clearstatcache();
-			} elseif (0 === $original_size) {
-				wp_delete_file($zipfile);
-				$opencode = false;
-			} else {
-				$opencode = false;
-			}
+		if ( $use_binzip ) {
+			$zip = new ROYALBR_BinZip( $this->binzip, $this->build_binzip_opts() );
+			$zip->set_log_callback( array( $this, 'log' ) );
+			$opencode = $zip->open( $zipfile );
+			$original_size = file_exists( $zipfile ) ? filesize( $zipfile ) : 0;
 		} else {
-			$original_size = 0;
-		}
+			$zip = new ZipArchive;
+			if (file_exists($zipfile)) {
+				$original_size = filesize($zipfile);
+				if ($original_size > 0) {
+					$opencode = $zip->open($zipfile);
+					clearstatcache();
+				} elseif (0 === $original_size) {
+					wp_delete_file($zipfile);
+					$opencode = false;
+				} else {
+					$opencode = false;
+				}
+			} else {
+				$original_size = 0;
+			}
 
-		if (0 === $original_size) {
-			$create_code = (version_compare(PHP_VERSION, '5.2.12', '>') && defined('ZIPARCHIVE::CREATE')) ? ZIPARCHIVE::CREATE : 1;
-			$opencode = $zip->open($zipfile, $create_code);
+			if (0 === $original_size) {
+				$create_code = (version_compare(PHP_VERSION, '5.2.12', '>') && defined('ZIPARCHIVE::CREATE')) ? ZIPARCHIVE::CREATE : 1;
+				$opencode = $zip->open($zipfile, $create_code);
+			}
 		}
 
 		if (true !== $opencode) {
@@ -2508,6 +2583,8 @@ class ROYALBR_Backup {
 		while ($dir = array_pop($this->directories_queue)) {
 			$zip->addEmptyDir($dir);
 		}
+
+		$this->log( 'Zip opened, directories added, beginning file addition' );
 
 		$batch_file_count = 0;
 
@@ -2572,6 +2649,7 @@ class ROYALBR_Backup {
 					// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Necessary for capturing PHP errors during file operations
 					set_error_handler( array( $this, 'php_error' ), $error_levels );
 
+					$this->log( sprintf( 'Calling zip close (files: %d, data: %s, memory: %s)', $batch_file_count, size_format( $data_added_since_reopen ), size_format( memory_get_usage( true ) ) ) );
 					$close_result = $zip->close();
 					restore_error_handler();
 
@@ -2582,7 +2660,11 @@ class ROYALBR_Backup {
 						$this->log( 'Aborting backup due to error: ' . $this->get_backup_error() );
 						return new WP_Error( 'disk_write_error', $this->get_backup_error() );
 					} elseif ( ! $close_result ) {
-						$this->record_zip_error( $files_zipadded_since_open, $this->last_php_error );
+						$error_info = $this->last_php_error;
+						if ( $use_binzip && ! empty( $zip->last_error ) ) {
+							$error_info = $zip->last_error . ( $error_info ? ' | ' . $error_info : '' );
+						}
+						$this->record_zip_error( $files_zipadded_since_open, $error_info );
 						$this->last_php_error = '';
 						$this->log( 'Aborting backup due to error: ' . $this->get_backup_error() );
 						return new WP_Error( 'zip_close_error', $this->get_backup_error() );
@@ -2635,15 +2717,21 @@ class ROYALBR_Backup {
 						$original_size = 0;
 					}
 
-					$zip = new ZipArchive;
-					if (file_exists($zipfile) && filesize($zipfile) > 0) {
-						$opencode = $zip->open($zipfile);
+					if ( $use_binzip ) {
+						$zip = new ROYALBR_BinZip( $this->binzip, $this->build_binzip_opts() );
+						$zip->set_log_callback( array( $this, 'log' ) );
+						$opencode = $zip->open( $zipfile );
 					} else {
-						// Delete empty file if exists to prevent deprecation warning.
-						if ( file_exists( $zipfile ) && 0 === filesize( $zipfile ) ) {
-							wp_delete_file( $zipfile );
+						$zip = new ZipArchive;
+						if (file_exists($zipfile) && filesize($zipfile) > 0) {
+							$opencode = $zip->open($zipfile);
+						} else {
+							// Delete empty file if exists to prevent deprecation warning.
+							if ( file_exists( $zipfile ) && 0 === filesize( $zipfile ) ) {
+								wp_delete_file( $zipfile );
+							}
+							$opencode = $zip->open($zipfile, ZipArchive::CREATE);
 						}
-						$opencode = $zip->open($zipfile, ZipArchive::CREATE);
 					}
 
 					if (true !== $opencode) {
@@ -2674,7 +2762,11 @@ class ROYALBR_Backup {
 				$this->log( 'Zip creation failed: ' . $this->get_backup_error() );
 				return new WP_Error( 'disk_write_error', $this->get_backup_error() );
 			} elseif ( ! $close_result ) {
-				$this->record_zip_error( $files_zipadded_since_open, $this->last_php_error );
+				$error_info = $this->last_php_error;
+				if ( $use_binzip && ! empty( $zip->last_error ) ) {
+					$error_info = $zip->last_error . ( $error_info ? ' | ' . $error_info : '' );
+				}
+				$this->record_zip_error( $files_zipadded_since_open, $error_info );
 				$this->last_php_error = '';
 				$this->log( 'Zip creation failed: ' . $this->get_backup_error() );
 				return new WP_Error( 'zip_close_error', $this->get_backup_error() );
@@ -2733,6 +2825,241 @@ class ROYALBR_Backup {
 	private function requires_uncompressed_storage($file) {
 		$ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
 		return in_array($ext, $this->extensions_to_not_compress);
+	}
+
+	/**
+	 * Build command-line options string for binary zip no-compress extensions.
+	 *
+	 * Converts the extensions_to_not_compress array into the -n flag format
+	 * that the zip binary uses to skip compression on already-compressed formats.
+	 *
+	 * @since  1.5.0
+	 * @return string Options string (e.g., "-n .jpg:.JPG:.png:.PNG:...")
+	 */
+	private function build_binzip_opts() {
+		if ( empty( $this->extensions_to_not_compress ) || ! is_array( $this->extensions_to_not_compress ) ) {
+			return '';
+		}
+
+		$opts = '';
+		foreach ( $this->extensions_to_not_compress as $ext ) {
+			$ext_with_dot    = '.' . $ext;
+			$ext_upper_dot   = '.' . strtoupper( $ext );
+			if ( empty( $opts ) ) {
+				$opts = '-n ' . $ext_with_dot . ':' . $ext_upper_dot;
+			} else {
+				$opts .= ':' . $ext_with_dot . ':' . $ext_upper_dot;
+			}
+		}
+
+		return $opts;
+	}
+
+	/**
+	 * Find a working binary zip executable on the system.
+	 *
+	 * Tests common zip binary paths for availability and compatibility.
+	 * Performs two-stage verification: basic zip creation with popen,
+	 * then stdin mode (-@) with proc_open, and finally validates the
+	 * resulting archive integrity.
+	 *
+	 * @since  1.5.0
+	 * @return string|false Path to working zip binary, or false if none found
+	 */
+	private function detect_binary_zip() {
+		global $royalbr_instance;
+
+		// Requires popen, proc_open, proc_close, escapeshellarg functions
+		if ( ! function_exists( 'popen' ) || ! function_exists( 'proc_open' ) || ! function_exists( 'proc_close' ) || ! function_exists( 'escapeshellarg' ) ) {
+			return false;
+		}
+
+		// Binary zip is only supported on Linux/Unix systems
+		if ( '\\' === DIRECTORY_SEPARATOR ) {
+			return false;
+		}
+
+		// Check for cached result from previous resumption
+		if ( ! empty( $royalbr_instance ) && method_exists( $royalbr_instance, 'retrieve_task_data' ) ) {
+			$existing = $royalbr_instance->retrieve_task_data( 'binzip', null );
+			// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged -- Silenced to suppress errors from is_executable
+			if ( null !== $existing && ( ! is_string( $existing ) || @is_executable( $existing ) ) ) {
+				return $existing;
+			}
+		}
+
+		$zip_paths = array(
+			'/usr/bin/zip',
+			'/bin/zip',
+			'/usr/local/bin/zip',
+			'/usr/sfw/bin/zip',
+			'/usr/xdg4/bin/zip',
+			'/opt/bin/zip',
+		);
+
+		foreach ( $zip_paths as $potzip ) {
+			// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged -- Silenced to suppress errors from is_executable
+			if ( ! @is_executable( $potzip ) ) {
+				continue;
+			}
+
+			$this->log( 'Testing potential zip binary: ' . $potzip );
+
+			// Create test directory structure
+			// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged -- Silenced to suppress errors from mkdir
+			@mkdir( $this->royalbr_dir . '/binziptest/subdir1/subdir2', 0777, true );
+
+			if ( ! file_exists( $this->royalbr_dir . '/binziptest/subdir1/subdir2' ) ) {
+				return false;
+			}
+
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Test file for zip verification
+			file_put_contents( $this->royalbr_dir . '/binziptest/subdir1/subdir2/test.html', '<html><body><a href="https://example.com">Royal Backup test file for binary zip verification.</a></body></html>' );
+
+			if ( file_exists( $this->royalbr_dir . '/binziptest/test.zip' ) ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Cleanup test file
+				unlink( $this->royalbr_dir . '/binziptest/test.zip' );
+			}
+
+			$all_ok = true;
+
+			if ( is_file( $this->royalbr_dir . '/binziptest/subdir1/subdir2/test.html' ) ) {
+
+				// Test 1: Basic zip creation with popen
+				$exec = 'cd ' . escapeshellarg( $this->royalbr_dir ) . '; ' . $potzip . ' -v -u -r binziptest/test.zip binziptest/subdir1';
+
+				// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- popen may fail
+				$handle = ( function_exists( 'popen' ) && function_exists( 'pclose' ) ) ? popen( $exec, 'r' ) : false;
+				if ( $handle ) {
+					while ( ! feof( $handle ) ) {
+						$w = fgets( $handle );
+						if ( $w ) {
+							$this->log( 'Output: ' . trim( $w ) );
+						}
+					}
+					$ret = pclose( $handle );
+					if ( 0 !== $ret ) {
+						$this->log( 'Binary zip: error (code: ' . $ret . ')' );
+						$all_ok = false;
+					}
+				} else {
+					$this->log( 'Error: popen failed' );
+					$all_ok = false;
+				}
+
+				// Test 2: stdin mode (-@) with proc_open
+				if ( $all_ok ) {
+					// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents -- Test file for zip verification
+					file_put_contents( $this->royalbr_dir . '/binziptest/subdir1/subdir2/test2.html', '<html><body><a href="https://example.com">Royal Backup second test file for binary zip stdin mode.</a></body></html>' );
+
+					$exec2 = $potzip . ' -v -@ binziptest/test.zip';
+
+					$descriptorspec = array(
+						0 => array( 'pipe', 'r' ),
+						1 => array( 'pipe', 'w' ),
+						2 => array( 'pipe', 'w' ),
+					);
+
+					$handle = proc_open( $exec2, $descriptorspec, $pipes, $this->royalbr_dir );
+					if ( is_resource( $handle ) ) {
+						if ( ! fwrite( $pipes[0], "binziptest/subdir1/subdir2/test2.html\n" ) ) {
+							// phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged -- Cleanup pipes on failure
+							@fclose( $pipes[0] );
+							@fclose( $pipes[1] );
+							@fclose( $pipes[2] );
+							$all_ok = false;
+						} else {
+							fclose( $pipes[0] );
+							while ( ! feof( $pipes[1] ) ) {
+								$w = fgets( $pipes[1] );
+								if ( $w ) {
+									$this->log( 'Output: ' . trim( $w ) );
+								}
+							}
+							fclose( $pipes[1] );
+
+							while ( ! feof( $pipes[2] ) ) {
+								$stderr_line = fgets( $pipes[2] );
+								if ( ! empty( $stderr_line ) ) {
+									$this->log( 'Stderr output: ' . trim( $stderr_line ) );
+								}
+							}
+							fclose( $pipes[2] );
+
+							$ret = function_exists( 'proc_close' ) ? proc_close( $handle ) : -1;
+							if ( 0 !== $ret ) {
+								$this->log( 'Binary zip: error (code: ' . $ret . ')' );
+								$all_ok = false;
+							}
+						}
+					} else {
+						$this->log( 'Error: proc_open failed' );
+						$all_ok = false;
+					}
+				}
+
+				// Test 3: Verify archive integrity
+				$found_first  = false;
+				$found_second = false;
+				if ( $all_ok && file_exists( $this->royalbr_dir . '/binziptest/test.zip' ) ) {
+					if ( function_exists( 'gzopen' ) ) {
+						if ( ! class_exists( 'PclZip' ) ) {
+							include_once ABSPATH . '/wp-admin/includes/class-pclzip.php';
+						}
+						$zip = new PclZip( $this->royalbr_dir . '/binziptest/test.zip' );
+						$list = $zip->listContent();
+						if ( 0 !== $list ) {
+							foreach ( $list as $obj ) {
+								if ( ! empty( $obj['stored_filename'] ) && 'binziptest/subdir1/subdir2/test.html' === $obj['stored_filename'] ) {
+									$found_first = true;
+								}
+								if ( ! empty( $obj['stored_filename'] ) && 'binziptest/subdir1/subdir2/test2.html' === $obj['stored_filename'] ) {
+									$found_second = true;
+								}
+							}
+						}
+					} else {
+						$this->log( 'gzopen function not found; will assume binary zip works if we have a non-zero file' );
+						if ( filesize( $this->royalbr_dir . '/binziptest/test.zip' ) > 0 ) {
+							$found_first  = true;
+							$found_second = true;
+						}
+					}
+				}
+
+				$this->remove_binzip_test_files();
+				if ( $found_first && $found_second ) {
+					$this->log( 'Working binary zip found: ' . $potzip );
+					if ( ! empty( $royalbr_instance ) && method_exists( $royalbr_instance, 'save_task_data' ) ) {
+						$royalbr_instance->save_task_data( 'binzip', $potzip );
+					}
+					return $potzip;
+				}
+			}
+
+			$this->remove_binzip_test_files();
+		}
+
+		if ( ! empty( $royalbr_instance ) && method_exists( $royalbr_instance, 'save_task_data' ) ) {
+			$royalbr_instance->save_task_data( 'binzip', false );
+		}
+		return false;
+	}
+
+	/**
+	 * Remove test files created during binary zip detection.
+	 *
+	 * @since 1.5.0
+	 */
+	private function remove_binzip_test_files() {
+		// phpcs:disable Generic.PHP.NoSilencedErrors.Discouraged -- Cleanup may fail if files don't exist
+		@unlink( $this->royalbr_dir . '/binziptest/subdir1/subdir2/test.html' );
+		@unlink( $this->royalbr_dir . '/binziptest/subdir1/subdir2/test2.html' );
+		@rmdir( $this->royalbr_dir . '/binziptest/subdir1/subdir2' );
+		@rmdir( $this->royalbr_dir . '/binziptest/subdir1' );
+		@unlink( $this->royalbr_dir . '/binziptest/test.zip' );
+		@rmdir( $this->royalbr_dir . '/binziptest' );
+		// phpcs:enable
 	}
 
 	/**
@@ -3066,6 +3393,14 @@ class ROYALBR_Backup {
 
 		$this->task_file_entities = $royalbr_instance->retrieve_task_data('task_file_entities');
 
+		if ( 'finished' !== $task_status && $royalbr_instance->current_resumption >= 2 ) {
+			if ( $royalbr_instance->no_checkin_last_time ) {
+				if ( $royalbr_instance->current_resumption - $royalbr_instance->last_successful_resumption > 2 ) {
+					$this->try_split = true;
+				}
+			}
+		}
+
 		// Visual feedback counter
 		$which_entity = 0;
 
@@ -3375,6 +3710,7 @@ class ROYALBR_Backup {
 		// Write to file immediately
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite -- Direct file operation needed for logging
 		fwrite( $this->logfile_handle, $formatted_line );
+		fflush( $this->logfile_handle );
 	}
 
 	/**

@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.17
+ * Version: 1.0.18
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.1
@@ -19,6 +19,9 @@
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
+
+// Keep this for stuck backups.
+// delete_option( 'royalbr_oneshotnonce' );
 
 // Prevent Freemius activation redirect when pending template edit exists.
 // This must be added early, before Freemius loads.
@@ -207,7 +210,7 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.17' );
+	define( 'ROYALBR_VERSION', '1.0.18' );
 }
 
 // Initialize plugin-wide constants including paths and configuration.

@@ -40,8 +40,8 @@ if ( ! defined( 'ABSPATH' ) ) {
                 <?php esc_html_e('Configuration', 'royal-backup-reset'); ?>
             </a>
             <?php if ( ! ( function_exists( 'royalbr_fs' ) && royalbr_fs()->can_use_premium_code() ) ) : ?>
-            <a href="#free-vs-pro" class="royalbr-nav-tab" data-tab="free-vs-pro">
-                <?php esc_html_e('Free vs Pro', 'royal-backup-reset'); ?>
+            <a href="#free-vs-pro" class="royalbr-nav-tab royalbr-nav-tab-premium" data-tab="free-vs-pro">
+                <span class="dashicons dashicons-star-filled"></span> <?php esc_html_e('Free vs Pro', 'royal-backup-reset'); ?>
             </a>
             <?php endif; ?>
         </nav>
@@ -547,6 +547,15 @@ if ( ! defined( 'ABSPATH' ) ) {
         <div id="free-vs-pro" class="royalbr-tab-content">
             <div class="royalbr-premium-section">
 
+                <!-- Trial Request -->
+                <div class="royalbr-trial-request">
+                    <h3><?php esc_html_e( 'Try Premium for Free', 'royal-backup-reset' ); ?></h3>
+                    <p><?php printf( esc_html__( 'Experience the full power of Royal Backup with a Free trial — %sno risk, no payment%s.', 'royal-backup-reset' ), '<strong>', '</strong>' ); ?></p>
+                    <a href="https://checkout.freemius.com/plugin/21745/plan/36290/?trial=free" target="_blank" rel="noopener noreferrer" class="button button-primary royalbr-trial-btn">
+                        <?php esc_html_e( 'Start Free Trial', 'royal-backup-reset' ); ?> <span class="dashicons dashicons-external"></span>
+                    </a>
+                </div>
+
                 <!-- Video Overview -->
                 <div class="royalbr-promo-video">
                     <iframe src="https://www.youtube.com/embed/toQF4kf02nU" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
@@ -803,7 +812,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                             </tr>
 
                             <!-- Feature: Incremental Backups (Coming Soon) -->
-                            <tr>
+                            <tr style="display:none;">
                                 <td>
                                     <h4><?php esc_html_e( 'Incremental Backups', 'royal-backup-reset' ); ?></h4>
                                     <p><?php esc_html_e( 'Back up only what changed since your last backup, saving time and storage space.', 'royal-backup-reset' ); ?></p>
@@ -817,7 +826,7 @@ if ( ! defined( 'ABSPATH' ) ) {
                             </tr>
 
                             <!-- Feature: Multisite Network Support (Coming Soon) -->
-                            <tr>
+                            <tr style="display:none;">
                                 <td>
                                     <h4><?php esc_html_e( 'Multisite Network Support', 'royal-backup-reset' ); ?></h4>
                                     <p><?php esc_html_e( 'Full support for WordPress Multisite networks.', 'royal-backup-reset' ); ?></p>
