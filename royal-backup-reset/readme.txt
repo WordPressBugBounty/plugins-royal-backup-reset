@@ -1,9 +1,9 @@
 === Royal Wordpress Backup & Restore Plugin - Backup Wordpress Sites Safely ===
 Contributors: wproyal
 Tags: backup plugin, wordpress backup, database backup, restore, reset database
-Stable tag: 1.0.18
+Stable tag: 1.0.19
 Requires at least: 5.0
-Tested up to: 6.9.1
+Tested up to: 6.9.4
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -141,6 +141,9 @@ This feature is mainly for testers or for those who want to reset Wordpress to f
 6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.18 =
+* Minor Improvements.
+
 = 1.0.18 =
 * Minor Improvements.
 

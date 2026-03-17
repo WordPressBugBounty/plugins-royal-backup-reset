@@ -548,13 +548,13 @@ if ( ! defined( 'ABSPATH' ) ) {
             <div class="royalbr-premium-section">
 
                 <!-- Trial Request -->
-                <div class="royalbr-trial-request">
+<!--                 <div class="royalbr-trial-request">
                     <h3><?php esc_html_e( 'Try Premium for Free', 'royal-backup-reset' ); ?></h3>
                     <p><?php printf( esc_html__( 'Experience the full power of Royal Backup with a Free trial — %sno risk, no payment%s.', 'royal-backup-reset' ), '<strong>', '</strong>' ); ?></p>
                     <a href="https://checkout.freemius.com/plugin/21745/plan/36290/?trial=free" target="_blank" rel="noopener noreferrer" class="button button-primary royalbr-trial-btn">
                         <?php esc_html_e( 'Start Free Trial', 'royal-backup-reset' ); ?> <span class="dashicons dashicons-external"></span>
                     </a>
-                </div>
+                </div> -->
 
                 <!-- Video Overview -->
                 <div class="royalbr-promo-video">
