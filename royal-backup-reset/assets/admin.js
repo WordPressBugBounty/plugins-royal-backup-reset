@@ -432,6 +432,7 @@ jQuery(document).ready(function($) {
         var timestamp = $button.data('timestamp');
         var nonce = $button.data('nonce');
         var isRemote = $button.data('is-remote') === 1 || $button.data('is-remote') === '1';
+        var backupSiteUrl = $button.data('backup-site-url') || '';
 
         // Get storage locations from button data attribute
         var storageLocations = [];
@@ -509,6 +510,56 @@ jQuery(document).ready(function($) {
                 }
             });
 
+            // Migration detection: show checkbox if backup site URL differs from current
+            var $migrationOption = $('#royalbr-migration-option');
+            var $wpcoreItem = $('#royalbr_component_wpcore').closest('.royalbr-restore-item');
+            var isMigrationRestore = $button.closest('#royalbr-migration-list').length > 0;
+            if (backupSiteUrl && royalbr_ajax.site_url && backupSiteUrl !== royalbr_ajax.site_url) {
+                $('#royalbr-migration-description').text(
+                    'All references to the site location in the database will be replaced with your current site URL: ' + royalbr_ajax.site_url
+                );
+                $migrationOption.show();
+            } else {
+                $migrationOption.hide();
+            }
+
+            if (isMigrationRestore) {
+                $wpcoreItem.hide();
+                $('#royalbr_component_wpcore').prop('checked', false);
+            } else {
+                $wpcoreItem.show();
+            }
+
+            // Show size info for free users on migration backups and block if over limit
+            var $sizeInfo = $('#royalbr-migration-size-info');
+            var totalSize = $button.data('total-size');
+            var isMigrationOverLimit = false;
+            if (!royalbr_ajax.is_premium && totalSize && $button.closest('#royalbr-migration-list').length) {
+                var maxSize = parseInt(royalbr_ajax.migration_max_size, 10);
+                var sizeMB = (totalSize / (1024 * 1024)).toFixed(0);
+                var maxMB = (maxSize / (1024 * 1024)).toFixed(0);
+                $sizeInfo.html('<strong>' + sizeMB + ' MB</strong> of <strong>' + maxMB + ' MB</strong>').show();
+                if (totalSize > maxSize) {
+                    isMigrationOverLimit = true;
+                }
+            } else {
+                $sizeInfo.hide();
+            }
+
+            // Block restore if migration backup exceeds size limit
+            if (isMigrationOverLimit) {
+                var $proModal = $('#royalbr-pro-modal');
+                if ($proModal.length) {
+                    $('.royalbr-modal:visible').not($proModal).hide();
+                    var sizeLimitName = $('.royalbr-migration-limit-note .royalbr-pro-badge').data('pro-option-name') || royalbr_admin.strings.migration_feature;
+                    $('#royalbr-pro-modal-message').html(
+                        '<strong>' + sizeLimitName + '</strong> ' + royalbr_admin.strings.pro_feature_message
+                    );
+                    $proModal.show();
+                }
+                return;
+            }
+
             // Show the modal
             $('#royalbr-component-selection-modal').show();
 
@@ -561,6 +612,8 @@ jQuery(document).ready(function($) {
                 // Remove the one-time handler
                 $('#royalbr-component-selection-proceed').off('click.adminrestore');
             });
+        }).catch(function(err) {
+            alert(err || 'Failed to load restore dialog. Please refresh the page and try again.');
         });
     });
 
@@ -763,6 +816,12 @@ jQuery(document).ready(function($) {
     // Modal functionality
     function showConfirmationModal(title, message, confirmCallback) {
         var $modal = $('#royalbr-confirmation-modal');
+        if (!$modal.length) {
+            // Modal not loaded - try reloading it
+            loadConfirmationModal();
+            alert(title + '\n\n' + message.replace(/<[^>]*>/g, '') + '\n\nPlease try again.');
+            return;
+        }
         $('#royalbr-modal-title').text(title);
         $('#royalbr-modal-message').html(message);
 
@@ -844,10 +903,17 @@ jQuery(document).ready(function($) {
         e.preventDefault();
 
         // Hide the new progress modal
-        $('#royalbr-progress-modal').hide();
+        var $modal = $('#royalbr-progress-modal');
+        $modal.hide();
 
-        // Refresh page after restore complete
-        location.reload();
+        // Redirect with auto-login token if available, otherwise reload
+        var token = $modal.data('royalbr-auto-login-token');
+        if (token) {
+            var separator = location.href.indexOf('?') !== -1 ? '&' : '?';
+            location.href = location.href.split('#')[0] + separator + 'royalbr_auto_login=' + encodeURIComponent(token);
+        } else {
+            location.reload();
+        }
     });
 
     // Handle close button on progress modal - only works when restore is complete
@@ -860,7 +926,13 @@ jQuery(document).ready(function($) {
         // Only allow closing if restore is complete (Done button is visible)
         if ($doneButton.is(':visible')) {
             $modal.hide();
-            location.reload();
+            var token = $modal.data('royalbr-auto-login-token');
+            if (token) {
+                var separator = location.href.indexOf('?') !== -1 ? '&' : '?';
+                location.href = location.href.split('#')[0] + separator + 'royalbr_auto_login=' + encodeURIComponent(token);
+            } else {
+                location.reload();
+            }
         }
     });
 
@@ -872,7 +944,13 @@ jQuery(document).ready(function($) {
             // Only allow closing if restore is complete (Done button is visible)
             if ($doneButton.is(':visible')) {
                 $(this).hide();
-                location.reload();
+                var token = $(this).data('royalbr-auto-login-token');
+                if (token) {
+                    var separator = location.href.indexOf('?') !== -1 ? '&' : '?';
+                    location.href = location.href.split('#')[0] + separator + 'royalbr_auto_login=' + encodeURIComponent(token);
+                } else {
+                    location.reload();
+                }
             }
         }
     });
@@ -891,12 +969,20 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    $button.closest('tr').fadeOut(function() {
+                    var $row = $button.closest('tr');
+                    var $table = $row.closest('table');
+                    var isMigration = $table.hasClass('royalbr-migration-table');
+
+                    $row.fadeOut(function() {
                         $(this).remove();
 
                         // Check if table is now empty
-                        if ($('.royalbr-backup-table tbody tr').length === 0) {
-                            $('#royalbr-backup-list').html('<div class="royalbr-no-backups"><p>' + royalbr_admin.strings.no_backups + '</p></div>');
+                        if ($table.find('tbody tr').length === 0) {
+                            if (isMigration) {
+                                $('#royalbr-migration-list').html('<div class="royalbr-no-backups royalbr-migration-empty"><p>' + 'No remote backups found yet. Click "Scan Remote Storage" to discover backups from your connected cloud storage.' + '</p></div>');
+                            } else {
+                                $('#royalbr-backup-list').html('<div class="royalbr-no-backups"><p>' + royalbr_admin.strings.no_backups + '</p></div>');
+                            }
                         }
                     });
                     showAdminNotice(royalbr_admin.strings.delete_success, 'success');
@@ -912,6 +998,220 @@ jQuery(document).ready(function($) {
             }
         });
     }
+
+    // Rescan remote storage button handler
+    $(document).on('click', '#royalbr-rescan-remote-btn', function(e) {
+        var $btn = $(this);
+        var $status = $('#royalbr-rescan-remote-status');
+
+        if ($btn.prop('disabled')) {
+            return;
+        }
+
+        $btn.prop('disabled', true).addClass('royalbr-loading');
+        $status.html('<span class="spinner is-active"></span> ' + 'Scanning remote storage...').show();
+
+        $.ajax({
+            url: royalbr_ajax.ajax_url,
+            type: 'POST',
+            timeout: 120000,
+            data: {
+                action: 'royalbr_rescan_remote',
+                nonce: royalbr_ajax.nonce
+            },
+            success: function(response) {
+                $btn.prop('disabled', false).removeClass('royalbr-loading');
+
+                if (response.success) {
+                    // Update migration table
+                    if (response.data.migration_html) {
+                        $('#royalbr-migration-list').html(response.data.migration_html);
+                    }
+
+                    // Also refresh backup list
+                    if (response.data.backup_list_html) {
+                        $('#royalbr-backup-list').html(response.data.backup_list_html);
+                    }
+
+                    // Display messages from each provider
+                    if (response.data.messages && response.data.messages.length > 0) {
+                        var messageHtml = '';
+                        response.data.messages.forEach(function(msg) {
+                            var cssClass = msg.type === 'error' ? 'royalbr-rescan-error' : 'royalbr-rescan-success';
+                            messageHtml += '<span class="' + cssClass + '">' + msg.message + '</span> ';
+                        });
+                        $status.html(messageHtml);
+                    } else {
+                        $status.html('<span class="royalbr-rescan-success">Scan complete.</span>');
+                    }
+
+                    // Auto-hide status after 10 seconds
+                    setTimeout(function() {
+                        $status.fadeOut();
+                    }, 10000);
+                } else {
+                    $status.html('<span class="royalbr-rescan-error">' + (response.data || 'Scan failed.') + '</span>');
+                }
+            },
+            error: function() {
+                $btn.prop('disabled', false).removeClass('royalbr-loading');
+                $status.html('<span class="royalbr-rescan-error">Connection error. Please try again.</span>');
+            }
+        });
+    });
+
+    // Upload backup files button handler
+    $(document).on('click', '#royalbr-upload-backup-btn', function(e) {
+        $('#royalbr-upload-backup-input').trigger('click');
+    });
+
+    $(document).on('change', '#royalbr-upload-backup-input', function() {
+        var files = Array.prototype.slice.call(this.files);
+        if (!files.length) {
+            return;
+        }
+        // Reset input now so the same files can be re-selected later.
+        $(this).val('');
+
+        // Free users: enforce file size limit (individual and total).
+        if (!royalbr_ajax.is_premium && royalbr_ajax.migration_max_size) {
+            var maxSize = parseInt(royalbr_ajax.migration_max_size, 10);
+            var totalSize = 0;
+            var hasOversized = false;
+            for (var i = 0; i < files.length; i++) {
+                totalSize += files[i].size;
+                if (files[i].size > maxSize) {
+                    hasOversized = true;
+                }
+            }
+            if (hasOversized || totalSize > maxSize) {
+                var $proModal = $('#royalbr-pro-modal');
+                if ($proModal.length) {
+                    $('.royalbr-modal:visible').not($proModal).hide();
+                    var sizeLimitName = $('.royalbr-migration-limit-note .royalbr-pro-badge').data('pro-option-name') || royalbr_admin.strings.migration_feature;
+                    $('#royalbr-pro-modal-message').html(
+                        '<strong>' + sizeLimitName + '</strong> ' + royalbr_admin.strings.pro_feature_message
+                    );
+                    $proModal.show();
+                }
+                return;
+            }
+        }
+
+        var $btn = $('#royalbr-upload-backup-btn');
+        var $status = $('#royalbr-rescan-remote-status');
+        var totalFiles = files.length;
+        var uploaded = 0;
+        var errors = [];
+
+        $btn.prop('disabled', true).addClass('royalbr-loading');
+        $status.html('<span class="spinner is-active"></span> Uploading ' + totalFiles + ' file(s)...').show();
+
+        function uploadNext(index) {
+            if (index >= totalFiles) {
+                // All files processed - rebuild local history only (no remote scan)
+                $status.html('<span class="spinner is-active"></span> Rebuilding backup history...');
+                $.ajax({
+                    url: royalbr_ajax.ajax_url,
+                    type: 'POST',
+                    timeout: 30000,
+                    data: {
+                        action: 'royalbr_rescan_local',
+                        nonce: royalbr_ajax.nonce
+                    },
+                    success: function(response) {
+                        $btn.prop('disabled', false).removeClass('royalbr-loading');
+
+                        if (response.success) {
+                            if (response.data.migration_html) {
+                                $('#royalbr-migration-list').html(response.data.migration_html);
+                            }
+                            if (response.data.backup_list_html) {
+                                $('#royalbr-backup-list').html(response.data.backup_list_html);
+                            }
+                        }
+
+                        var msg = uploaded + ' of ' + totalFiles + ' file(s) uploaded successfully.';
+                        if (errors.length) {
+                            msg += ' Errors: ' + errors.join(', ');
+                            $status.html('<span class="royalbr-rescan-error">' + msg + '</span>');
+                        } else {
+                            $status.html('<span class="royalbr-rescan-success">' + msg + '</span>');
+                        }
+
+                        setTimeout(function() { $status.fadeOut(); }, 10000);
+                    },
+                    error: function() {
+                        $btn.prop('disabled', false).removeClass('royalbr-loading');
+                        var msg = uploaded + ' of ' + totalFiles + ' file(s) uploaded.';
+                        if (errors.length) {
+                            msg += ' Errors: ' + errors.join(', ');
+                        }
+                        $status.html('<span class="royalbr-rescan-error">' + msg + ' History rebuild failed.</span>');
+                    }
+                });
+                return;
+            }
+
+            var file = files[index];
+            $status.html('<span class="spinner is-active"></span> Uploading file ' + (index + 1) + ' of ' + totalFiles + ': ' + file.name);
+
+            var formData = new FormData();
+            formData.append('action', 'royalbr_upload_backup');
+            formData.append('nonce', royalbr_ajax.nonce);
+            formData.append('backup_file', file);
+
+            $.ajax({
+                url: royalbr_ajax.ajax_url,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                timeout: 300000,
+                success: function(response) {
+                    if (response.success) {
+                        uploaded++;
+                        uploadNext(index + 1);
+                    } else {
+                        var errMsg = response.data || 'Unknown error';
+                        // Check if this is a size limit error — show PRO modal and stop uploading.
+                        if (!royalbr_ajax.is_premium && typeof errMsg === 'string' && errMsg.indexOf('200') !== -1 && errMsg.indexOf('limit') !== -1) {
+                            $btn.prop('disabled', false).removeClass('royalbr-loading');
+                            $status.hide();
+                            var $proModal = $('#royalbr-pro-modal');
+                            if ($proModal.length) {
+                                $('.royalbr-modal:visible').not($proModal).hide();
+                                var sizeLimitName = $('.royalbr-migration-limit-note .royalbr-pro-badge').data('pro-option-name') || royalbr_admin.strings.migration_feature;
+                                $('#royalbr-pro-modal-message').html(
+                                    '<strong>' + sizeLimitName + '</strong> ' + royalbr_admin.strings.pro_feature_message
+                                );
+                                $proModal.show();
+                            }
+                            return;
+                        }
+                        errors.push(file.name + ': ' + errMsg);
+                        uploadNext(index + 1);
+                    }
+                },
+                error: function(jqXHR) {
+                    var detail = 'Upload failed';
+                    if (jqXHR.status === 413) {
+                        detail = 'File too large for server (413). Increase upload_max_filesize and post_max_size in PHP settings';
+                    } else if (jqXHR.status === 0) {
+                        detail = 'Connection failed - file may be too large or server timed out';
+                    } else if (jqXHR.responseJSON && jqXHR.responseJSON.data) {
+                        detail = jqXHR.responseJSON.data;
+                    } else if (jqXHR.status) {
+                        detail = 'Server error (HTTP ' + jqXHR.status + ')';
+                    }
+                    errors.push(file.name + ': ' + detail);
+                    uploadNext(index + 1);
+                }
+            });
+        }
+
+        uploadNext(0);
+    });
 
     // Refresh backup list function
     function refreshBackupList() {
@@ -1757,20 +2057,28 @@ jQuery(document).ready(function($) {
             return Promise.resolve();
         }
 
-        return $.ajax({
-            url: royalbr_ajax.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'royalbr_get_component_selection_modal_html',
-                context: context,
-                nonce: royalbr_ajax.nonce
-            },
-            success: function(response) {
-                if (response.success && response.data.html) {
-                    $('body').append(response.data.html);
-                    setupComponentSelectionModalHandlers(context);
+        return new Promise(function(resolve, reject) {
+            $.ajax({
+                url: royalbr_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'royalbr_get_component_selection_modal_html',
+                    context: context,
+                    nonce: royalbr_ajax.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.html) {
+                        $('body').append(response.data.html);
+                        setupComponentSelectionModalHandlers(context);
+                        resolve();
+                    } else {
+                        reject('Failed to load restore modal');
+                    }
+                },
+                error: function() {
+                    reject('Failed to load restore modal. Please refresh the page and try again.');
                 }
-            }
+            });
         });
     };
 
@@ -2225,17 +2533,25 @@ jQuery(document).ready(function($) {
      * @param {jQuery} $modal - Progress modal element
      */
     ROYALBR.createRestoreTask = function(timestamp, nonce, components, $modal) {
+        var restoreData = {
+            action: 'royalbr_ajax_restore',
+            royalbr_ajax_restore: 'start_ajax_restore',
+            timestamp: timestamp,
+            backup_nonce: nonce,
+            components: components,
+            nonce: royalbr_ajax.nonce
+        };
+
+        // Include migration option if checked
+        var $migrateCheckbox = $('#royalbr_restorer_replacesiteurl');
+        if ($migrateCheckbox.length && $migrateCheckbox.is(':checked')) {
+            restoreData.royalbr_restorer_replacesiteurl = 1;
+        }
+
         $.ajax({
             url: royalbr_ajax.ajax_url,
             type: 'POST',
-            data: {
-                action: 'royalbr_ajax_restore',
-                royalbr_ajax_restore: 'start_ajax_restore',
-                timestamp: timestamp,
-                backup_nonce: nonce,
-                components: components,
-                nonce: royalbr_ajax.nonce
-            },
+            data: restoreData,
             success: function(response) {
                 if (response.success && response.data.task_id) {
                     console.log('Restore task created with ID:', response.data.task_id);
@@ -2338,6 +2654,12 @@ jQuery(document).ready(function($) {
                 $modal.find('li.active').removeClass('active').addClass('done');
 
                 if ($successResult.length) {
+                    // Store auto-login token for use when "Done" is clicked
+                    var tokenInput = doc.getElementById('royalbr_auto_login_token');
+                    if (tokenInput && tokenInput.value) {
+                        $modal.data('royalbr-auto-login-token', tokenInput.value);
+                    }
+
                     // Success
                     $modal.find('.royalbr-restore-components-list').hide();
                     $modal.find('.royalbr-modal-header').css('justify-content', 'center');

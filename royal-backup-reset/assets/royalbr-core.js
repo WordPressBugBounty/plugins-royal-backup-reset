@@ -564,6 +564,12 @@
                 $modal.find('li.active').removeClass('active').addClass('done');
 
                 if ($successResult.length) {
+                    // Store auto-login token for use when "Done" is clicked
+                    var tokenInput = doc.getElementById('royalbr_auto_login_token');
+                    if (tokenInput && tokenInput.value) {
+                        $modal.data('royalbr-auto-login-token', tokenInput.value);
+                    }
+
                     // Success
                     $modal.find('.royalbr-restore-components-list').hide();
                     $modal.find('.royalbr-modal-header').css('justify-content', 'center');

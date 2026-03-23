@@ -684,6 +684,22 @@ class ROYALBR_Restore {
 	private $max_allowed_packet;
 
 	/**
+	 * Pre-restore user data stored in memory for re-authentication.
+	 *
+	 * Stored in-memory (not DB) so it survives database replacement during migration.
+	 *
+	 * @var array|null
+	 */
+	private $pre_restore_user = null;
+
+	/**
+	 * One-time auto-login token for re-authentication after streaming restore.
+	 *
+	 * @var string|null
+	 */
+	public $auto_login_token = null;
+
+	/**
 	 * Character set specified via SET NAMES command
 	 *
 	 * @var string
@@ -787,6 +803,8 @@ class ROYALBR_Restore {
 		$this->royalbr_multisite_selective_restore = false; // Single-site only
 		$this->restore_options = $restore_options;
 
+		do_action( 'royalbr_restorer_restore_options', $this->restore_options );
+
 		$this->royalbr_foreign = false; // Foreign backup support not implemented
 		$this->royalbr_backup_is_multisite = -1;
 		if ( isset( $backup_set['created_by_version'] ) ) {
@@ -889,6 +907,24 @@ class ROYALBR_Restore {
 			$this->use_wpdb = false;
 		}
 		return $this->use_wpdb;
+	}
+
+	/**
+	 * Public accessor for use_wpdb state (used by search-replace engine)
+	 *
+	 * @return bool True for wpdb wrapper, false for direct connection
+	 */
+	public function get_use_wpdb() {
+		return $this->use_wpdb();
+	}
+
+	/**
+	 * Public accessor for the custom database object (used by search-replace engine)
+	 *
+	 * @return object|null Database object or null
+	 */
+	public function get_db_object() {
+		return isset( $this->wpdb_obj ) ? $this->wpdb_obj : null;
 	}
 
 	/**
@@ -1433,13 +1469,14 @@ class ROYALBR_Restore {
 	private function save_configuration_bundle() {
 		$this->configuration_bundle = array();
 
-		// Always preserve restore in progress flag
-		$keys_to_save = array( 'royalbr_restore_in_progress' );
+		// Always preserve restore in progress flag and site URLs (critical for migration).
+		$keys_to_save = array( 'royalbr_restore_in_progress', 'siteurl', 'home' );
 
 		// Preserve all plugin configuration, backup history, and Freemius options
 		$keys_to_save = array_merge( $keys_to_save, array(
 			'royalbr_backup_history',
 			'royalbr_backup_display_names',
+			'royalbr_migration_upload_nonces',
 			'royalbr_backup_include_db',
 			'royalbr_backup_include_files',
 			'royalbr_backup_include_wpcore',
@@ -1485,6 +1522,9 @@ class ROYALBR_Restore {
 			'royalbr_s3_bucket',
 			'royalbr_s3_region',
 			'royalbr_s3_path',
+			// Dropbox credentials.
+			'royalbr_dropbox_auth_code',
+			'royalbr_dropbox_site_token',
 			// Remote restore cleanup transients (files downloaded from GDrive for restore).
 			'_transient_royalbr_restore_downloaded_files',
 			'_transient_timeout_royalbr_restore_downloaded_files',
@@ -1552,6 +1592,29 @@ class ROYALBR_Restore {
 				$log_value = (string) $value;
 			}
 			$this->royalbr_instance->log_e( 'Config bundle restored: %s = %s (result: %s)', $key, $log_value, $result ? 'success' : 'failed' );
+		}
+
+		// Remove remote storage options that weren't on this site before restore.
+		// Prevents backup's invalid credentials from leaking through on migration.
+		$remote_storage_keys = array(
+			'royalbr_backup_loc_gdrive',
+			'royalbr_backup_loc_dropbox',
+			'royalbr_backup_loc_s3',
+			'royalbr_gdrive_folder_name',
+			'royalbr_gdrive_refresh_token',
+			'royalbr_dropbox_auth_code',
+			'royalbr_dropbox_site_token',
+			'royalbr_s3_access_key',
+			'royalbr_s3_secret_key',
+			'royalbr_s3_location',
+			'royalbr_s3_bucket',
+			'royalbr_s3_region',
+			'royalbr_s3_path',
+		);
+		foreach ( $remote_storage_keys as $remote_key ) {
+			if ( ! array_key_exists( $remote_key, $this->configuration_bundle ) ) {
+				delete_option( $remote_key );
+			}
 		}
 
 		// Reset LiteSpeed server warning on migration
@@ -3486,6 +3549,13 @@ class ROYALBR_Restore {
 			$this->restored_table( $final_table_name, $this->final_import_table_prefix, $this->old_table_prefix, $this->table_engine );
 		}
 
+		// Fire migration/search-replace hook after all DB tables are restored
+		$db_restore_info = array(
+			'expected_oldsiteurl' => $this->old_siteurl,
+			'expected_oldhome'    => $this->old_home,
+		);
+		do_action( 'royalbr_restored_db', $db_restore_info, $this->final_import_table_prefix );
+
 		// Drop dummy restored tables
 		if ( $this->is_dummy_db_restore ) {
 			$this->remove_database_tables( $this->restored_table_names );
@@ -3641,16 +3711,17 @@ class ROYALBR_Restore {
 		} elseif ( preg_match( '/^([\d+]_)?usermeta$/', substr( $table, strlen( $import_table_prefix ) ), $matches ) ) {
 			// Handle usermeta table
 
-			// Store current user data for re-authentication after restore (regardless of prefix change)
+			// Store current user data in memory for re-authentication after restore.
+			// Uses class property instead of transient because DB is replaced during migration.
 			$current_user_id = get_current_user_id();
 			if ( $current_user_id ) {
 				$current_user = wp_get_current_user();
 				if ( $current_user && $current_user->user_email ) {
-					set_transient( 'royalbr_restore_user_' . $current_user_id, array(
+					$this->pre_restore_user = array(
 						'email' => $current_user->user_email,
 						'login' => $current_user->user_login,
-						'id' => $current_user_id
-					), 300 ); // Keep for 5 minutes
+						'id'    => $current_user_id,
+					);
 					$this->royalbr_instance->log_e( 'Stored current user data for re-authentication: ID=%d, login=%s', $current_user_id, $current_user->user_login );
 				}
 			}
@@ -3700,7 +3771,7 @@ class ROYALBR_Restore {
 
 		}
 
-		// ROYALBR: Skip action hook - simplified
+		do_action( 'royalbr_restored_db_table', $table, $import_table_prefix, $engine );
 
 		// Re-generate permalinks after options table restored
 		if ( $table == $import_table_prefix . 'options' ) {
@@ -4007,24 +4078,70 @@ class ROYALBR_Restore {
 	 * @return void
 	 */
 	private function reauthenticate_user_after_restore() {
-		$current_user_id = get_current_user_id();
-
-		if ( ! $current_user_id ) {
-			$this->royalbr_instance->log_e( 'No current user to re-authenticate' );
+		if ( empty( $this->pre_restore_user ) ) {
+			$this->royalbr_instance->log_e( 'No stored user data found for re-authentication' );
 			return;
 		}
 
-		$stored_user = get_transient( 'royalbr_restore_user_' . $current_user_id );
+		$stored_email = $this->pre_restore_user['email'];
+		$stored_login = $this->pre_restore_user['login'];
+		$stored_id    = $this->pre_restore_user['id'];
 
-		if ( $stored_user && isset( $stored_user['id'] ) ) {
-			// Clear old auth cookie and set new one
-			wp_clear_auth_cookie();
-			wp_set_auth_cookie( $stored_user['id'], true ); // true = remember me
-			delete_transient( 'royalbr_restore_user_' . $current_user_id );
-			$this->royalbr_instance->log_e( 'Re-authenticated user after restore: ID=%d, login=%s', $stored_user['id'], $stored_user['login'] );
-		} else {
-			$this->royalbr_instance->log_e( 'No stored user data found for re-authentication (user_id=%d)', $current_user_id );
+		// First try: look up user by original ID (same-site restore).
+		$user = get_user_by( 'id', $stored_id );
+
+		// Second try: look up by email (migration — user IDs may differ).
+		if ( ! $user ) {
+			$user = get_user_by( 'email', $stored_email );
+			if ( $user ) {
+				$this->royalbr_instance->log_e( 'User ID changed during migration: old=%d, new=%d (matched by email)', $stored_id, $user->ID );
+			}
 		}
+
+		// Third try: look up by login name.
+		if ( ! $user ) {
+			$user = get_user_by( 'login', $stored_login );
+			if ( $user ) {
+				$this->royalbr_instance->log_e( 'User matched by login: %s (ID=%d)', $stored_login, $user->ID );
+			}
+		}
+
+		// Last resort: get first administrator.
+		if ( ! $user ) {
+			$admins = get_users( array(
+				'role'   => 'administrator',
+				'number' => 1,
+			) );
+			if ( ! empty( $admins ) ) {
+				$user = $admins[0];
+				$this->royalbr_instance->log_e( 'No matching user found, falling back to first admin: ID=%d, login=%s', $user->ID, $user->user_login );
+			}
+		}
+
+		if ( $user ) {
+			// Generate one-time auto-login token. Cookies cannot be set during
+			// streaming output because HTTP headers have already been sent.
+			$token = wp_generate_password( 40, false );
+			update_option( 'royalbr_auto_login_token', array(
+				'token'   => wp_hash( $token ),
+				'user_id' => $user->ID,
+				'expires' => time() + 120,
+			), false );
+			$this->auto_login_token = $token;
+
+			// Set current user so subsequent nonce checks work within this request.
+			wp_set_current_user( $user->ID, $user->user_login );
+			if ( defined( 'LOGGED_IN_COOKIE' ) ) {
+				// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated -- Setting auth cookie for current request
+				$_COOKIE[ LOGGED_IN_COOKIE ] = wp_generate_auth_cookie( $user->ID, time() + DAY_IN_SECONDS, 'logged_in' );
+			}
+
+			$this->royalbr_instance->log_e( 'Re-authenticated user after restore: ID=%d, login=%s', $user->ID, $user->user_login );
+		} else {
+			$this->royalbr_instance->log_e( 'Could not find any admin user for re-authentication' );
+		}
+
+		$this->pre_restore_user = null;
 	}
 
 	/**
@@ -4162,12 +4279,18 @@ class ROYALBR_Restore {
 	 * @param array  $components Components to restore (db, plugins, themes, uploads, others).
 	 * @return array Array with success/error status.
 	 */
-	public function restore_backup_session( $timestamp, $components = array() ) {
+	public function restore_backup_session( $timestamp, $components = array(), $restore_options = array() ) {
 		global $royalbr_instance;
 
 		// Default to restoring all components if none specified
 		if ( empty( $components ) ) {
 			$components = array( 'db', 'plugins', 'themes', 'uploads', 'others', 'wpcore' );
+		}
+
+		// Merge any passed restore options
+		if ( ! empty( $restore_options ) ) {
+			$this->restore_options = array_merge( $this->restore_options, $restore_options );
+			do_action( 'royalbr_restorer_restore_options', $this->restore_options );
 		}
 
 		$this->royalbr_instance->log_e( 'restore_backup_session() called for timestamp: %s', $timestamp );
@@ -4276,22 +4399,21 @@ class ROYALBR_Restore {
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- Necessary for capturing and logging PHP errors during restore operations
 		set_error_handler( array( $this, 'php_error' ), $error_levels );
 
-		// Setup restore options
-		$restore_options = array(); // ROYALBR doesn't have advanced options yet
-
 		// Store backup_set for perform_restore
 		$this->royalbr_backup_set = $backup_set;
-		$this->restore_options = $restore_options;
 
 		// Call perform_restore
 		$this->royalbr_instance->log_e( 'Calling perform_restore() with entities: %s', implode( ', ', array_keys( $entities_to_restore ) ) );
-		$restore_result = $this->run_restoration_process( $entities_to_restore, $restore_options );
+		$restore_result = $this->run_restoration_process( $entities_to_restore, $this->restore_options );
 
 		// Call post_restore_clean_up
 		$this->post_restore_clean_up( $restore_result );
 
 		// Send 'finished' stage message
 		$sval = ( true === $restore_result ) ? 1 : 0;
+
+		// Flush object cache so site_url/home_url return updated values after migration search/replace.
+		wp_cache_flush();
 
 		// Get some page URLs for the frontend
 		$pages = get_pages( array( 'number' => 2 ) );

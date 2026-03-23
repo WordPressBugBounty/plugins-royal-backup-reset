@@ -1,18 +1,18 @@
-=== Royal Wordpress Backup & Restore Plugin - Backup Wordpress Sites Safely ===
+=== Royal Wordpress Backup, Restore & Migration Plugin - Backup Wordpress Sites Safely ===
 Contributors: wproyal
-Tags: backup plugin, wordpress backup, database backup, restore, reset database
-Stable tag: 1.0.19
+Tags: backup plugin, wordpress backup, database backup, restore, migrate
+Stable tag: 1.0.20
 Requires at least: 5.0
 Tested up to: 6.9.4
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-WordPress backup plugin to create full website backups and restore them easily, smart pre-update backup reminders, built-in database reset tool and more!
+WordPress backup plugin to create full website backups and restore them easily. Built in migration to easily migrate your website, smart pre-update backup reminders, built-in database reset tool and more!
 
 == Description ==
 
-Royal Backup & Restore is a powerful and **easy-to-use** WordPress backup plugin that helps you protect your website by creating full site backups, database backups, and automatic scheduled backups in just a few clicks. Whether you want to secure your website from crashes, plugin conflicts, hacking attempts, or update failures, this plugin ensures your WordPress site can always be **restored quickly and safely**.
+Royal Backup, Restore & Migration is a powerful and **easy-to-use** WordPress backup plugin that helps you protect your website by creating full site backups, database backups, and automatic scheduled backups in just a few clicks. The Powerfull and Easy to use Migration feature lets you migrate, clone or copy any website from staging website to Live Website easily, Whether you want to secure your website from crashes, plugin conflicts, hacking attempts, or update failures, this plugin ensures your WordPress site can always be **restored quickly and safely**. 
 
 Unlike other WordPress backup plugins, Royal Backup includes a **unique smart** backup reminder system that **automatically prompts** you to create a backup before updating plugins, themes, or installing new ones — preventing accidental data loss.
 
@@ -24,9 +24,10 @@ You can also securely store backups in **cloud storage** (PRO version) such as G
 
 = ✅Key Features of Free Version =
 
-* **Unique Feature - Backup Notification During Theme or Plugin Updates or Installation - No other plugin offers this feature** - ⏩ [See Video](https://www.youtube.com/watch?v=4SZ9r8mOt1M&t=27s). Plugin will remind you to make wordpress backup before activating or updating themes or plugins
-* **Full Website Backups** - Backup your entire WordPress website including database, plugins, themes, uploads, and other files
-* **Full Website Restore** - Restore your entire WordPress website including database, plugins, themes, uploads, and other files
+* **Unique Feature - Backup Notification During Theme or Plugin Updates or Installation - No other plugin offers this feature** - ⏩ [See Video](https://www.youtube.com/watch?v=4SZ9r8mOt1M&t=27s). Plugin will remind you to make wordpress backup before activating or updating themes or plugins.
+* **Full Website Backups** - Backup your entire WordPress website including database, plugins, themes, uploads, and other files.
+* **Full Website Restore** - Restore your entire WordPress website including database, plugins, themes, uploads, and other files.
+* **Full Website Migration - Clone** - Migrate, clone or copy any website from staging website to Live Website easily.
 * **Assign Custom Names to your Backups** - Assign custom names to wordpress backups for easy identification and organization.
 * **Backup Component Downloads** - Download individual wordpress backup components such as the database, plugins, themes, and more.
 * **Background Backup** - Feel free to refresh or close the browser window during wordpress backups — this won’t break the backup process.
@@ -44,6 +45,7 @@ https://www.youtube.com/watch?v=toQF4kf02nU
 
 * **Backup Core Wordpress Files** - Backup all core WordPress files including wp-admin, wp-includes, and essential root files such as wp-config.php, .htaccess, and more. If something damages or alters these core files — such as viruses, hacker attacks, plugin updates, theme changes, or WordPress updates — you can always revert and restore the original WordPress files.
 * **Schedule Backups** - Schedule backup to run every 1 hour, 12 hours, daily, weekly, once every two weeks and monthly. So you can ‘set and forget’ about Backups. Backup Schedule can be configured for Files and databases separately.
+* **Unlimited file Size for Migraiton** - Migrate websites without file size limits. Migrate websites from remote storage services such as Google Drive, Dropbox, and Amazon S3.
 * **Google Drive Cloud Backup** - Store backups securely on Google Drive. One Click Configuration.
 * **Dropbox Cloud Backup** - Store backups securely on Dropbox. One Click Configuration.
 * **Amazon S3 Cloud Backup** - Store backups securely on Amazon S3. Other Popular Cloud Backup Providers.
@@ -141,7 +143,10 @@ This feature is mainly for testers or for those who want to reset Wordpress to f
 6. Mini Database Reset Icon
 
 == Changelog ==
-= 1.0.18 =
+= 1.0.20 =
+* Added Website Migration Feature.
+
+= 1.0.19 =
 * Minor Improvements.
 
 = 1.0.18 =
@@ -179,3 +184,8 @@ This feature is mainly for testers or for those who want to reset Wordpress to f
 
 = 1.0.2 =
 * Initial release.
+
+== Upgrade Notice ==
+
+= 1.0.20 =
+New Website Migration feature added.

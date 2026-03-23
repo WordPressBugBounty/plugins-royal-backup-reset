@@ -550,6 +550,325 @@ class ROYALBR_Backup_History {
 	}
 
 	/**
+	 * Scans remote storage providers and merges discovered backups into history.
+	 *
+	 * @since  1.0.0
+	 * @return array Array of status messages from each provider scan.
+	 */
+	public static function rebuild_remote() {
+		$messages = array();
+		$history  = self::get_history_data();
+
+		// Get connected remote storage providers (regardless of enabled status).
+		$providers = array();
+
+		// Check Google Drive.
+		$gdrive_token = get_option( 'royalbr_gdrive_refresh_token', '' );
+		if ( ! empty( $gdrive_token ) ) {
+			$providers[] = 'gdrive';
+		}
+
+		// Check Dropbox.
+		$dropbox_auth  = get_option( 'royalbr_dropbox_auth_code', '' );
+		$dropbox_token = get_option( 'royalbr_dropbox_site_token', '' );
+		if ( ! empty( $dropbox_auth ) && ! empty( $dropbox_token ) ) {
+			$providers[] = 'dropbox';
+		}
+
+		// Check S3.
+		$s3_access = get_option( 'royalbr_s3_access_key', '' );
+		$s3_secret = get_option( 'royalbr_s3_secret_key', '' );
+		$s3_bucket = get_option( 'royalbr_s3_bucket', '' );
+		if ( ! empty( $s3_access ) && ! empty( $s3_secret ) && ! empty( $s3_bucket ) ) {
+			$providers[] = 's3';
+		}
+
+		if ( empty( $providers ) ) {
+			$messages[] = array(
+				'type'    => 'info',
+				'message' => esc_html__( 'No remote storage providers are connected.', 'royal-backup-reset' ),
+			);
+			return $messages;
+		}
+
+		$new_count     = 0;
+		$updated_count = 0;
+		$filename_regex = '/^backup_(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})_.*_([a-f0-9]{12})-(db|plugins|themes|uploads|others|wpcore)(\d+)?\./';
+
+		foreach ( $providers as $provider ) {
+			$remote_files = self::fetch_remote_file_list( $provider );
+
+			if ( false === $remote_files ) {
+				$messages[] = array(
+					'type'    => 'error',
+					/* translators: %s: storage provider name */
+					'message' => sprintf( esc_html__( 'Failed to scan %s.', 'royal-backup-reset' ), self::get_provider_label( $provider ) ),
+				);
+				continue;
+			}
+
+			$provider_new = 0;
+
+			foreach ( $remote_files as $remote_file ) {
+				$filename = self::extract_filename( $remote_file, $provider );
+				$filesize = self::extract_filesize( $remote_file, $provider );
+
+				if ( empty( $filename ) ) {
+					continue;
+				}
+
+				if ( ! preg_match( $filename_regex, $filename, $matches ) ) {
+					continue;
+				}
+
+				$year        = $matches[1];
+				$month       = $matches[2];
+				$day         = $matches[3];
+				$hour        = $matches[4];
+				$minute      = $matches[5];
+				$nonce       = $matches[6];
+				$component   = $matches[7];
+				$chunk_index = isset( $matches[8] ) && '' !== $matches[8] ? (int) $matches[8] : 1;
+
+				if ( isset( $history['backups'][ $nonce ] ) ) {
+					// Backup exists — add remote storage location if missing.
+					$existing_storage = isset( $history['backups'][ $nonce ]['storage_locations'] )
+						? $history['backups'][ $nonce ]['storage_locations']
+						: array();
+
+					if ( ! in_array( $provider, $existing_storage, true ) ) {
+						$history['backups'][ $nonce ]['storage_locations'][] = $provider;
+						++$updated_count;
+					}
+				} else {
+					// New backup — create entry.
+					$timestamp = gmmktime( (int) $hour, (int) $minute, 0, (int) $month, (int) $day, (int) $year );
+
+					$history['backups'][ $nonce ] = array(
+						'timestamp'         => $timestamp,
+						'created'           => gmdate( 'Y-m-d H:i:s', $timestamp ),
+						'site_url'          => '',
+						'wp_version'        => '',
+						'plugin_version'    => '',
+						'components'        => array(),
+						'status'            => 'complete',
+						'total_size'        => 0,
+						'notes'             => '',
+						'storage_locations' => array( $provider ),
+					);
+
+					$history['index']['by_timestamp'][ $timestamp ] = $nonce;
+					$history['index']['by_status']['complete'][]    = $nonce;
+
+					++$provider_new;
+					++$new_count;
+				}
+
+				// Add/update component data.
+				if ( ! isset( $history['backups'][ $nonce ]['components'][ $component ] ) ) {
+					$history['backups'][ $nonce ]['components'][ $component ] = array(
+						'file'   => array(),
+						'size'   => 0,
+						'status' => 'complete',
+						'remote' => array(),
+					);
+				}
+
+				// Ensure remote array is initialized for this provider.
+				if ( ! isset( $history['backups'][ $nonce ]['components'][ $component ]['remote'] ) || ! is_array( $history['backups'][ $nonce ]['components'][ $component ]['remote'] ) ) {
+					$history['backups'][ $nonce ]['components'][ $component ]['remote'] = array();
+				}
+				if ( ! isset( $history['backups'][ $nonce ]['components'][ $component ]['remote'][ $provider ] ) || ! is_array( $history['backups'][ $nonce ]['components'][ $component ]['remote'][ $provider ] ) ) {
+					$history['backups'][ $nonce ]['components'][ $component ]['remote'][ $provider ] = array();
+				}
+
+				// Build file info entry with file_id and filename for remote restore.
+				$file_id    = self::extract_file_id( $remote_file, $provider );
+				$file_entry = array(
+					'file_id'  => $file_id,
+					'filename' => $filename,
+				);
+
+				// Add to remote provider's file list if not already present.
+				$already_exists = false;
+				foreach ( $history['backups'][ $nonce ]['components'][ $component ]['remote'][ $provider ] as $existing ) {
+					if ( isset( $existing['filename'] ) && $existing['filename'] === $filename ) {
+						$already_exists = true;
+						break;
+					}
+				}
+				if ( ! $already_exists ) {
+					$history['backups'][ $nonce ]['components'][ $component ]['remote'][ $provider ][] = $file_entry;
+				}
+
+				// Add chunk file if not already present.
+				$comp_files = $history['backups'][ $nonce ]['components'][ $component ]['file'];
+				if ( ! isset( $comp_files[ $chunk_index ] ) && ! in_array( $filename, $comp_files, true ) ) {
+					$history['backups'][ $nonce ]['components'][ $component ]['file'][ $chunk_index ] = $filename;
+					$history['backups'][ $nonce ]['components'][ $component ]['size']                += $filesize;
+					$history['backups'][ $nonce ]['total_size']                                      += $filesize;
+				}
+			}
+
+			if ( $provider_new > 0 ) {
+				$messages[] = array(
+					'type'    => 'success',
+					/* translators: 1: number of backups found, 2: storage provider name */
+					'message' => sprintf( esc_html__( 'Found %1$d new backup(s) on %2$s.', 'royal-backup-reset' ), $provider_new, self::get_provider_label( $provider ) ),
+				);
+			} else {
+				$messages[] = array(
+					'type'    => 'success',
+					/* translators: %s: storage provider name */
+					'message' => sprintf( esc_html__( 'Scanned %s — no new backups found.', 'royal-backup-reset' ), self::get_provider_label( $provider ) ),
+				);
+			}
+		}
+
+		// Sort chunk files and convert to sequential arrays.
+		foreach ( $history['backups'] as $nonce => &$backup ) {
+			foreach ( $backup['components'] as $component => &$component_data ) {
+				if ( is_array( $component_data['file'] ) ) {
+					ksort( $component_data['file'] );
+					$component_data['file'] = array_values( $component_data['file'] );
+				}
+			}
+		}
+		unset( $backup, $component_data );
+
+		// Save updated history.
+		$history['meta']['last_updated'] = time();
+		update_option( 'royalbr_backup_history', $history, false );
+
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+			error_log( 'ROYALBR: Remote rescan complete. New: ' . $new_count . ', Updated: ' . $updated_count );
+		}
+
+		return $messages;
+	}
+
+	/**
+	 * Fetches file list from a remote storage provider.
+	 *
+	 * @param string $provider Provider identifier (gdrive, dropbox, s3).
+	 * @return array|false Array of file entries or false on failure.
+	 */
+	private static function fetch_remote_file_list( $provider ) {
+		switch ( $provider ) {
+			case 'gdrive':
+				require_once ROYALBR_PLUGIN_DIR . 'premium/lib/class-royalbr-gdrive.php';
+				$gdrive                = new RoyalBR_GDrive();
+				$gdrive->refresh_token = get_option( 'royalbr_gdrive_refresh_token', '' );
+				$gdrive->access_token  = $gdrive->refresh_token_func( $gdrive->refresh_token );
+				if ( empty( $gdrive->access_token ) ) {
+					return false;
+				}
+				return $gdrive->list_files( 'backup_' );
+
+			case 'dropbox':
+				require_once ROYALBR_PLUGIN_DIR . 'premium/lib/class-royalbr-dropbox.php';
+				$dropbox = new RoyalBR_Dropbox();
+				return $dropbox->list_files( 'backup_' );
+
+			case 's3':
+				require_once ROYALBR_PLUGIN_DIR . 'premium/lib/class-royalbr-s3.php';
+				$s3 = new RoyalBR_S3(
+					array(
+						'access_key' => get_option( 'royalbr_s3_access_key', '' ),
+						'secret_key' => get_option( 'royalbr_s3_secret_key', '' ),
+						'bucket'     => get_option( 'royalbr_s3_bucket', '' ),
+						'region'     => get_option( 'royalbr_s3_region', 'us-east-1' ),
+						'path'       => get_option( 'royalbr_s3_path', '' ),
+					)
+				);
+				$result = $s3->list_files();
+				if ( is_wp_error( $result ) ) {
+					return false;
+				}
+				return $result;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Extracts filename from a remote file entry based on provider format.
+	 *
+	 * @param array  $file_entry Remote file data.
+	 * @param string $provider   Provider identifier.
+	 * @return string Filename.
+	 */
+	private static function extract_filename( $file_entry, $provider ) {
+		switch ( $provider ) {
+			case 'gdrive':
+				return isset( $file_entry['name'] ) ? $file_entry['name'] : '';
+			case 'dropbox':
+				return isset( $file_entry['name'] ) ? $file_entry['name'] : '';
+			case 's3':
+				if ( ! isset( $file_entry['key'] ) ) {
+					return '';
+				}
+				// S3 key may include path prefix — extract basename.
+				return basename( $file_entry['key'] );
+		}
+		return '';
+	}
+
+	/**
+	 * Extracts file ID from a remote file entry based on provider format.
+	 *
+	 * @param array  $file_entry Remote file data.
+	 * @param string $provider   Provider identifier.
+	 * @return string File ID.
+	 */
+	private static function extract_file_id( $file_entry, $provider ) {
+		switch ( $provider ) {
+			case 'gdrive':
+				return isset( $file_entry['id'] ) ? $file_entry['id'] : '';
+			case 'dropbox':
+				return isset( $file_entry['id'] ) ? $file_entry['id'] : '';
+			case 's3':
+				return isset( $file_entry['key'] ) ? $file_entry['key'] : '';
+		}
+		return '';
+	}
+
+	/**
+	 * Extracts file size from a remote file entry based on provider format.
+	 *
+	 * @param array  $file_entry Remote file data.
+	 * @param string $provider   Provider identifier.
+	 * @return int File size in bytes.
+	 */
+	private static function extract_filesize( $file_entry, $provider ) {
+		switch ( $provider ) {
+			case 'gdrive':
+				return isset( $file_entry['size'] ) ? (int) $file_entry['size'] : 0;
+			case 'dropbox':
+				return isset( $file_entry['size'] ) ? (int) $file_entry['size'] : 0;
+			case 's3':
+				return isset( $file_entry['size'] ) ? (int) $file_entry['size'] : 0;
+		}
+		return 0;
+	}
+
+	/**
+	 * Gets a human-readable label for a storage provider.
+	 *
+	 * @param string $provider Provider identifier.
+	 * @return string Provider label.
+	 */
+	private static function get_provider_label( $provider ) {
+		$labels = array(
+			'gdrive'  => 'Google Drive',
+			'dropbox' => 'Dropbox',
+			's3'      => 'Amazon S3',
+		);
+		return isset( $labels[ $provider ] ) ? $labels[ $provider ] : $provider;
+	}
+
+	/**
 	 * Discovers all chunk files for a backup component from the filesystem.
 	 *
 	 * This is a fallback method when the history only contains a single file

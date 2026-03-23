@@ -255,8 +255,9 @@ class ROYALBR_Reset {
 		$home        = get_option( 'home' );
 
 		// Store plugin-specific data for restoration.
-		$backup_history       = get_option( 'royalbr_backup_history', array() );
-		$backup_display_names = get_option( 'royalbr_backup_display_names', array() );
+		$backup_history            = get_option( 'royalbr_backup_history', array() );
+		$backup_display_names      = get_option( 'royalbr_backup_display_names', array() );
+		$migration_upload_nonces   = get_option( 'royalbr_migration_upload_nonces', array() );
 
 		// Cache all user preference settings for later restoration.
 		$royalbr_backup_include_db     = get_option( 'royalbr_backup_include_db' );
@@ -312,6 +313,10 @@ class ROYALBR_Reset {
 		$royalbr_s3_bucket     = get_option( 'royalbr_s3_bucket' );
 		$royalbr_s3_region     = get_option( 'royalbr_s3_region' );
 		$royalbr_s3_path       = get_option( 'royalbr_s3_path' );
+
+		// Preserve Dropbox credentials.
+		$royalbr_dropbox_auth_code  = get_option( 'royalbr_dropbox_auth_code' );
+		$royalbr_dropbox_site_token = get_option( 'royalbr_dropbox_site_token' );
 
 		// Retrieve temporarily stored list of active plugins and theme.
 		$active_plugins = get_transient( 'royalbr_active_plugins' );
@@ -389,6 +394,7 @@ class ROYALBR_Reset {
 		update_option( 'royalbr-reset', $this->options );
 		update_option( 'royalbr_backup_history', $backup_history );
 		update_option( 'royalbr_backup_display_names', $backup_display_names );
+		update_option( 'royalbr_migration_upload_nonces', $migration_upload_nonces );
 
 		// Restore each user preference if previously set.
 		if ( false !== $royalbr_backup_include_db ) {
@@ -576,6 +582,14 @@ class ROYALBR_Reset {
 		}
 		if ( false !== $royalbr_s3_path ) {
 			update_option( 'royalbr_s3_path', $royalbr_s3_path );
+		}
+
+		// Restore Dropbox credentials.
+		if ( false !== $royalbr_dropbox_auth_code ) {
+			update_option( 'royalbr_dropbox_auth_code', $royalbr_dropbox_auth_code );
+		}
+		if ( false !== $royalbr_dropbox_site_token ) {
+			update_option( 'royalbr_dropbox_site_token', $royalbr_dropbox_site_token );
 		}
 
 		// Delete uploads directory contents based on selected options.

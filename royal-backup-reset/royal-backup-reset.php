@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.19
+ * Version: 1.0.20
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.4
@@ -210,7 +210,12 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.19' );
+	define( 'ROYALBR_VERSION', '1.0.20' );
+}
+
+// Maximum migration file size for free users (200 MB).
+if ( ! defined( 'ROYALBR_MIGRATION_MAX_SIZE' ) ) {
+	define( 'ROYALBR_MIGRATION_MAX_SIZE', 200 * 1024 * 1024 );
 }
 
 // Initialize plugin-wide constants including paths and configuration.
@@ -426,6 +431,9 @@ class RoyalBackupReset {
 		add_action( 'wp_ajax_royalbr_dropbox_verify', array( $this, 'dropbox_verify_ajax' ) );
 		add_action( 'wp_ajax_royalbr_s3_test_connection', array( $this, 's3_test_connection_ajax' ) );
 		add_action( 'wp_ajax_royalbr_s3_disconnect', array( $this, 's3_disconnect_ajax' ) );
+		add_action( 'wp_ajax_royalbr_rescan_remote', array( $this, 'rescan_remote_ajax' ) );
+		add_action( 'wp_ajax_royalbr_upload_backup', array( $this, 'upload_backup_ajax' ) );
+		add_action( 'wp_ajax_royalbr_rescan_local', array( $this, 'rescan_local_ajax' ) );
 
 		// Register WP-Cron hook for backup resumption.
 		add_action( 'royalbr_backup_resume', array( $this, 'backup_resume' ), 10, 2 );
@@ -517,11 +525,57 @@ class RoyalBackupReset {
 	 * @since 1.0.0
 	 */
 	public function init() {
+		$this->maybe_auto_login_after_restore();
+
 		// Translation files load automatically in WordPress 6.7+, no manual loading required.
 		$this->create_backup_directory();
 
 		// Register filter to exclude specific directory types from backups.
 		add_filter( 'royalbr_exclude_directory', array( $this, 'exclude_git_worktrees' ), 10, 3 );
+	}
+
+	/**
+	 * Handles one-time auto-login after migration restore.
+	 *
+	 * During streaming restore, setcookie() fails because headers are already sent.
+	 * Instead, a short-lived token is stored in the DB and passed to the frontend.
+	 * On the next page load this method validates the token and sets auth cookies.
+	 *
+	 * @since 2.0.0
+	 * @return void
+	 */
+	private function maybe_auto_login_after_restore() {
+		if ( empty( $_GET['royalbr_auto_login'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+
+		$token_data = get_option( 'royalbr_auto_login_token' );
+		if ( ! $token_data || ! is_array( $token_data ) ) {
+			return;
+		}
+
+		// Delete immediately (one-time use).
+		delete_option( 'royalbr_auto_login_token' );
+
+		// Validate expiry.
+		if ( time() > $token_data['expires'] ) {
+			return;
+		}
+
+		// Validate token hash.
+		$submitted = sanitize_text_field( wp_unslash( $_GET['royalbr_auto_login'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( ! hash_equals( $token_data['token'], wp_hash( $submitted ) ) ) {
+			return;
+		}
+
+		// Authenticate user.
+		$user = get_user_by( 'id', $token_data['user_id'] );
+		if ( $user && $user->exists() ) {
+			wp_set_current_user( $user->ID, $user->user_login );
+			wp_set_auth_cookie( $user->ID, true, is_ssl() );
+			wp_safe_redirect( remove_query_arg( 'royalbr_auto_login' ) );
+			exit;
+		}
 	}
 
 	/**
@@ -678,8 +732,10 @@ class RoyalBackupReset {
 				'ajax_url'      => admin_url( 'admin-ajax.php' ),
 				'nonce'         => wp_create_nonce( 'royalbr_nonce' ),
 				'restore_nonce' => wp_create_nonce( 'royalbr_initiate_restore' ),
-				'is_premium'    => function_exists( 'royalbr_fs' ) && royalbr_fs()->can_use_premium_code(),
+				'is_premium'          => function_exists( 'royalbr_fs' ) && royalbr_fs()->can_use_premium_code(),
+				'migration_max_size'  => ROYALBR_MIGRATION_MAX_SIZE,
 				'is_multisite'  => is_multisite(),
+				'site_url'      => untrailingslashit( site_url() ),
 				'active_backup' => $this->get_active_backup_status(),
 				'strings'       => array(
 					'remote_restore_confirm'   => __( 'This backup is stored remotely. Files will be downloaded before restoration. This may take a few minutes depending on backup size. Continue?', 'royal-backup-reset' ),
@@ -719,6 +775,8 @@ class RoyalBackupReset {
 					'please_wait'               => __( 'Please wait, do not close this page...', 'royal-backup-reset' ),
 					'pro_feature_default'       => __( 'This feature', 'royal-backup-reset' ),
 					'pro_feature_message'       => __( 'is a PRO feature. Upgrade to unlock this and other premium features.', 'royal-backup-reset' ),
+					'migration_feature'         => __( 'Migration', 'royal-backup-reset' ),
+					'migration_size_limit'      => __( 'Migration above 200 MB', 'royal-backup-reset' ),
 				),
 			)
 		);
@@ -1094,6 +1152,26 @@ class RoyalBackupReset {
 			$components = array( 'db', 'plugins', 'themes', 'uploads', 'others', 'wpcore' );
 		}
 
+		// Free users: enforce 200MB total size limit for migration backups.
+		$is_premium = function_exists( 'royalbr_fs' ) && royalbr_fs()->can_use_premium_code();
+		if ( ! $is_premium ) {
+			$migration_uploads = get_option( 'royalbr_migration_upload_nonces', array() );
+			$backup_set_check  = ROYALBR_Backup_History::get_history( $timestamp );
+			if ( ! empty( $backup_set_check['nonce'] ) && in_array( $backup_set_check['nonce'], $migration_uploads, true ) ) {
+				$backup_dir  = trailingslashit( ROYALBR_BACKUP_DIR );
+				$total_size  = 0;
+				$nonce_files = glob( $backup_dir . '*_' . $backup_set_check['nonce'] . '-*' );
+				if ( is_array( $nonce_files ) ) {
+					foreach ( $nonce_files as $nonce_file ) {
+						$total_size += filesize( $nonce_file );
+					}
+				}
+				if ( $total_size > 209715200 ) {
+					wp_send_json_error( esc_html__( 'Total backup size exceeds the 200 MB limit. Upgrade to PRO for unlimited file size.', 'royal-backup-reset' ) );
+				}
+			}
+		}
+
 		// Store current user info before restore
 		$current_user = wp_get_current_user();
 		$current_user_id = $current_user->ID;
@@ -1304,7 +1382,8 @@ class RoyalBackupReset {
 							'local'    => ! empty( $valid_files ),
 							'remote'   => $remote_info,
 						);
-						$session_total_size += $component_total_size;
+						$effective_size      = $component_total_size > 0 ? $component_total_size : ( isset( $component_data['size'] ) ? $component_data['size'] : 0 );
+						$session_total_size += $effective_size;
 					}
 				}
 			}
@@ -1425,8 +1504,21 @@ class RoyalBackupReset {
 	 * @since 1.0.0
 	 */
 	public function display_backup_table() {
-		$backup_sessions = $this->get_backup_files();
-		$backup_dir      = rtrim( ROYALBR_BACKUP_DIR, '/\\' ) . DIRECTORY_SEPARATOR;
+		$backup_sessions   = $this->get_backup_files();
+		$backup_dir        = rtrim( ROYALBR_BACKUP_DIR, '/\\' ) . DIRECTORY_SEPARATOR;
+		$migration_uploads = get_option( 'royalbr_migration_upload_nonces', array() );
+
+		// Filter out remote-only backups and uploaded migration backups (those belong in the Migration section).
+		$backup_sessions = array_filter(
+			$backup_sessions,
+			function ( $session ) use ( $migration_uploads ) {
+				$storage     = isset( $session['storage_locations'] ) ? $session['storage_locations'] : array( 'local' );
+				$is_local    = in_array( 'local', $storage, true );
+				$is_uploaded = isset( $session['nonce'] ) && in_array( $session['nonce'], $migration_uploads, true );
+				return $is_local && ! $is_uploaded;
+			}
+		);
+		$backup_sessions = array_values( $backup_sessions );
 
 		if ( empty( $backup_sessions ) ) {
 			echo '<div class="royalbr-no-backups">';
@@ -1671,6 +1763,8 @@ class RoyalBackupReset {
 				echo 'data-timestamp="' . esc_attr( $timestamp ) . '" ';
 				echo 'data-nonce="' . esc_attr( $nonce ) . '" ';
 				echo 'data-available-components="' . esc_attr( wp_json_encode( $available_components ) ) . '" ';
+				$backup_site_url = isset( $session['site_url'] ) ? $session['site_url'] : '';
+				echo 'data-backup-site-url="' . esc_attr( $backup_site_url ) . '" ';
 				echo 'data-storage-locations="' . esc_attr( wp_json_encode( $storage_locations ) ) . '" ';
 				echo 'data-is-remote="' . ( ( $has_gdrive || $has_dropbox || $has_s3 ) ? '1' : '0' ) . '">';
 				echo esc_html__( 'Restore', 'royal-backup-reset' );
@@ -1680,6 +1774,173 @@ class RoyalBackupReset {
 				echo '</button>';
 			}
 			echo '</td>';
+			echo '</tr>';
+		}
+
+		echo '</tbody>';
+		echo '</table>';
+	}
+
+	/**
+	 * Displays the migration table showing remote-only backups from other sites.
+	 *
+	 * @since 1.0.0
+	 */
+	public function display_migration_table() {
+		$backup_sessions    = $this->get_backup_files();
+		$migration_uploads  = get_option( 'royalbr_migration_upload_nonces', array() );
+
+		// Include remote-only backups AND manually uploaded migration backups.
+		$migration_sessions = array_filter(
+			$backup_sessions,
+			function ( $session ) use ( $migration_uploads ) {
+				$storage = isset( $session['storage_locations'] ) ? $session['storage_locations'] : array( 'local' );
+				$is_remote_only    = ! in_array( 'local', $storage, true );
+				$is_uploaded       = isset( $session['nonce'] ) && in_array( $session['nonce'], $migration_uploads, true );
+				return $is_remote_only || $is_uploaded;
+			}
+		);
+
+		// Sort by timestamp (newest first).
+		usort(
+			$migration_sessions,
+			function ( $a, $b ) {
+				return $b['timestamp'] - $a['timestamp'];
+			}
+		);
+
+		if ( empty( $migration_sessions ) ) {
+			echo '<div class="royalbr-no-backups royalbr-migration-empty">';
+			echo '<p>' . esc_html__( 'No migration backups found. Scan remote storage or upload backup files to get started.', 'royal-backup-reset' ) . '</p>';
+			echo '</div>';
+			return;
+		}
+
+		$service_data = array(
+			'gdrive'  => array(
+				'name' => esc_html__( 'Google Drive', 'royal-backup-reset' ),
+				'icon' => ROYALBR_PLUGIN_URL . 'assets/images/gdrive.svg',
+			),
+			'dropbox' => array(
+				'name' => esc_html__( 'Dropbox', 'royal-backup-reset' ),
+				'icon' => ROYALBR_PLUGIN_URL . 'assets/images/dropbox.svg',
+			),
+			's3'      => array(
+				'name' => esc_html__( 'Amazon S3', 'royal-backup-reset' ),
+				'icon' => ROYALBR_PLUGIN_URL . 'assets/images/s3.svg',
+			),
+		);
+
+		echo '<table class="wp-list-table widefat fixed striped royalbr-backup-table royalbr-migration-table">';
+		echo '<thead>';
+		echo '<tr>';
+		echo '<th scope="col">' . esc_html__( 'Backup ID', 'royal-backup-reset' ) . '</th>';
+		echo '<th scope="col">' . esc_html__( 'Created On', 'royal-backup-reset' ) . '</th>';
+		echo '<th scope="col">' . esc_html__( 'Storage & Content', 'royal-backup-reset' ) . '</th>';
+		echo '<th scope="col">' . esc_html__( 'Actions', 'royal-backup-reset' ) . '</th>';
+		echo '</tr>';
+		echo '</thead>';
+		echo '<tbody>';
+
+		foreach ( $migration_sessions as $session ) {
+			$timestamp         = $session['timestamp'];
+			$nonce             = isset( $session['nonce'] ) ? $session['nonce'] : '';
+			$storage_locations = isset( $session['storage_locations'] ) ? $session['storage_locations'] : array();
+			$has_gdrive        = in_array( 'gdrive', $storage_locations, true );
+			$has_dropbox       = in_array( 'dropbox', $storage_locations, true );
+			$has_s3            = in_array( 's3', $storage_locations, true );
+			$is_uploaded       = in_array( $nonce, $migration_uploads, true );
+			$is_remote         = $has_gdrive || $has_dropbox || $has_s3;
+
+			echo '<tr>';
+
+			// Backup ID column with storage icons.
+			echo '<td>';
+			echo '<div class="royalbr-backup-name-wrapper">';
+
+			if ( $is_uploaded && ! $is_remote ) {
+				echo '<span class="royalbr-storage-icon" title="' . esc_attr__( 'Uploaded', 'royal-backup-reset' ) . '">';
+				echo '<span class="dashicons dashicons-upload" style="font-size:16px;width:16px;height:16px;"></span>';
+				echo '</span>';
+			}
+			if ( $has_gdrive ) {
+				echo '<span class="royalbr-storage-icon" title="' . esc_attr__( 'Google Drive', 'royal-backup-reset' ) . '">';
+				echo '<img src="' . esc_url( $service_data['gdrive']['icon'] ) . '" alt="Google Drive" width="16" height="16" />';
+				echo '</span>';
+			}
+			if ( $has_dropbox ) {
+				echo '<span class="royalbr-storage-icon" title="' . esc_attr__( 'Dropbox', 'royal-backup-reset' ) . '">';
+				echo '<img src="' . esc_url( $service_data['dropbox']['icon'] ) . '" alt="Dropbox" width="16" height="16" />';
+				echo '</span>';
+			}
+			if ( $has_s3 ) {
+				echo '<span class="royalbr-storage-icon" title="' . esc_attr__( 'Amazon S3', 'royal-backup-reset' ) . '">';
+				echo '<img src="' . esc_url( $service_data['s3']['icon'] ) . '" alt="Amazon S3" width="16" height="16" />';
+				echo '</span>';
+			}
+
+			echo '<strong class="royalbr-backup-name">' . esc_html( $nonce ) . '</strong>';
+			echo '</div>';
+
+			if ( $session['total_size'] > 0 ) {
+				echo '<br><small>' . esc_html( size_format( $session['total_size'], 1 ) ) . '</small>';
+			}
+			echo '</td>';
+
+			// Created On column.
+			echo '<td class="royalbr-backup-date">' . esc_html( date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $timestamp ) ) . '</td>';
+
+			// Storage & Content column.
+			echo '<td class="royalbr-backup-components">';
+
+			// Show storage source label.
+			echo '<div class="royalbr-remote-notice">';
+			if ( $is_uploaded && ! $is_remote ) {
+				echo '<span class="dashicons dashicons-upload" style="font-size:14px;width:14px;height:14px;vertical-align:text-bottom;"></span> ';
+				echo esc_html__( 'Uploaded backup', 'royal-backup-reset' );
+			} else {
+				if ( $has_gdrive ) {
+					echo '<img src="' . esc_url( $service_data['gdrive']['icon'] ) . '" alt="Google Drive" width="16" height="16" /> ';
+				}
+				if ( $has_dropbox ) {
+					echo '<img src="' . esc_url( $service_data['dropbox']['icon'] ) . '" alt="Dropbox" width="16" height="16" /> ';
+				}
+				if ( $has_s3 ) {
+					echo '<img src="' . esc_url( $service_data['s3']['icon'] ) . '" alt="Amazon S3" width="16" height="16" /> ';
+				}
+				echo esc_html__( 'Remote backup', 'royal-backup-reset' );
+			}
+			echo '</div>';
+
+			// Show components.
+			echo '<div class="royalbr-remote-components">';
+			foreach ( $session['components'] as $component => $file_info ) {
+				$component_label = $this->get_component_label( $component );
+				echo '<span class="royalbr-remote-component">' . esc_html( $component_label ) . '</span>';
+			}
+			echo '</div>';
+			echo '</td>';
+
+			// Actions column.
+			echo '<td class="royalbr-backup-actions">';
+			$available_components = array_keys( $session['components'] );
+			$backup_site_url      = isset( $session['site_url'] ) ? $session['site_url'] : '';
+			$is_remote_restore    = $is_remote && ! $is_uploaded;
+			echo '<button type="button" class="button button-primary royalbr-restore-backup" ';
+			echo 'data-timestamp="' . esc_attr( $timestamp ) . '" ';
+			echo 'data-nonce="' . esc_attr( $nonce ) . '" ';
+			echo 'data-available-components="' . esc_attr( wp_json_encode( $available_components ) ) . '" ';
+			echo 'data-backup-site-url="' . esc_attr( $backup_site_url ) . '" ';
+			echo 'data-storage-locations="' . esc_attr( wp_json_encode( $storage_locations ) ) . '" ';
+			echo 'data-is-remote="' . ( $is_remote_restore ? '1' : '0' ) . '" ';
+			echo 'data-total-size="' . esc_attr( $session['total_size'] ) . '">';
+			echo esc_html__( 'Restore', 'royal-backup-reset' );
+			echo '</button> ';
+			echo '<button type="button" class="button royalbr-delete-backup" data-timestamp="' . esc_attr( $timestamp ) . '" data-nonce="' . esc_attr( $nonce ) . '">';
+			echo esc_html__( 'Remove', 'royal-backup-reset' );
+			echo '</button>';
+			echo '</td>';
+
 			echo '</tr>';
 		}
 
@@ -1824,13 +2085,6 @@ class RoyalBackupReset {
 			);
 		}
 
-		if ( 0 === $deleted_files ) {
-			return array(
-				'success' => false,
-				'error'   => __( 'No backup files found to delete.', 'royal-backup-reset' ),
-			);
-		}
-
 		// Update history database after file removal.
 		if ( $timestamp ) {
 			ROYALBR_Backup_History::delete_backup_set( $timestamp );
@@ -1843,10 +2097,20 @@ class RoyalBackupReset {
 			update_option( 'royalbr_backup_display_names', $display_names, false );
 		}
 
+		// Remove from migration upload nonces if exists.
+		$migration_uploads = get_option( 'royalbr_migration_upload_nonces', array() );
+		$upload_key        = array_search( $nonce, $migration_uploads, true );
+		if ( false !== $upload_key ) {
+			unset( $migration_uploads[ $upload_key ] );
+			update_option( 'royalbr_migration_upload_nonces', array_values( $migration_uploads ), false );
+		}
+
 		return array(
 			'success' => true,
-			/* translators: %d: Number of files deleted */
-		'message' => sprintf( __( 'Backup session deleted successfully (%d files).', 'royal-backup-reset' ), $deleted_files ),
+			'message' => $deleted_files > 0
+				/* translators: %d: Number of files deleted */
+				? sprintf( __( 'Backup session deleted successfully (%d files).', 'royal-backup-reset' ), $deleted_files )
+				: __( 'Backup session removed from history.', 'royal-backup-reset' ),
 		);
 	}
 
@@ -1905,20 +2169,15 @@ class RoyalBackupReset {
 			);
 		}
 
-		if ( 0 === $deleted_files ) {
-			return array(
-				'success' => false,
-				'error'   => __( 'No backup files found to delete.', 'royal-backup-reset' ),
-			);
-		}
-
 		// Update history database after file removal.
 		ROYALBR_Backup_History::delete_backup_set( $timestamp );
 
 		return array(
 			'success' => true,
-			/* translators: %d: Number of files deleted */
-		'message' => sprintf( __( 'Backup session deleted successfully (%d files).', 'royal-backup-reset' ), $deleted_files ),
+			'message' => $deleted_files > 0
+				/* translators: %d: Number of files deleted */
+				? sprintf( __( 'Backup session deleted successfully (%d files).', 'royal-backup-reset' ), $deleted_files )
+				: __( 'Backup session removed from history.', 'royal-backup-reset' ),
 		);
 	}
 
@@ -2916,6 +3175,205 @@ class RoyalBackupReset {
 	}
 
 	/**
+	 * AJAX handler to rescan remote storage and merge discovered backups.
+	 *
+	 * @since 1.0.0
+	 */
+	public function rescan_remote_ajax() {
+		check_ajax_referer( 'royalbr_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( esc_html__( 'Unauthorized access.', 'royal-backup-reset' ) );
+		}
+
+		// Rebuild local history first.
+		ROYALBR_Backup_History::rebuild();
+
+		// Scan remote storage.
+		$messages = ROYALBR_Backup_History::rebuild_remote();
+
+		// Generate fresh migration table HTML.
+		ob_start();
+		$this->display_migration_table();
+		$migration_html = ob_get_clean();
+
+		// Also refresh backup list (in case storage_locations were updated).
+		ob_start();
+		$this->display_backup_table();
+		$backup_list_html = ob_get_clean();
+
+		wp_send_json_success( array(
+			'migration_html'  => $migration_html,
+			'backup_list_html' => $backup_list_html,
+			'messages'         => $messages,
+		) );
+	}
+
+	/**
+	 * AJAX handler to rebuild local backup history and refresh tables.
+	 *
+	 * Lightweight alternative to rescan_remote — only rebuilds from local filesystem
+	 * without scanning cloud providers. Used after uploading backup files.
+	 *
+	 * @since 1.0.0
+	 */
+	public function rescan_local_ajax() {
+		check_ajax_referer( 'royalbr_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( esc_html__( 'Unauthorized access.', 'royal-backup-reset' ) );
+		}
+
+		// Rebuild local history only (no remote scanning).
+		ROYALBR_Backup_History::rebuild();
+
+		// Generate fresh migration table HTML.
+		ob_start();
+		$this->display_migration_table();
+		$migration_html = ob_get_clean();
+
+		// Also refresh backup list.
+		ob_start();
+		$this->display_backup_table();
+		$backup_list_html = ob_get_clean();
+
+		wp_send_json_success( array(
+			'migration_html'   => $migration_html,
+			'backup_list_html' => $backup_list_html,
+		) );
+	}
+
+	/**
+	 * AJAX handler to upload backup files into the backup directory.
+	 *
+	 * Accepts file uploads via FormData, validates the filename matches the backup
+	 * naming pattern, moves the file to the backup directory, then rebuilds history.
+	 *
+	 * @since 1.0.0
+	 */
+	public function upload_backup_ajax() {
+
+		// Detect post_max_size exceeded before nonce check (PHP empties $_POST and $_FILES when exceeded).
+		if ( empty( $_FILES ) && empty( $_POST ) ) {
+			$post_max = ini_get( 'post_max_size' );
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Cannot verify nonce when $_POST is empty due to post_max_size exceeded
+			wp_send_json_error(
+				sprintf(
+					/* translators: %s: Server post_max_size value */
+					esc_html__( 'The file exceeds the server upload limit (post_max_size: %s). Please increase post_max_size in php.ini or contact your hosting provider.', 'royal-backup-reset' ),
+					$post_max
+				)
+			);
+		}
+
+		check_ajax_referer( 'royalbr_nonce', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( esc_html__( 'Unauthorized access.', 'royal-backup-reset' ) );
+		}
+
+		// Free users: enforce 200MB migration size limit per file.
+		$is_premium = function_exists( 'royalbr_fs' ) && royalbr_fs()->can_use_premium_code();
+		if ( ! $is_premium && ! empty( $_FILES['backup_file']['size'] ) && $_FILES['backup_file']['size'] > 209715200 ) {
+			wp_send_json_error( esc_html__( 'This file exceeds the 200 MB limit. Upgrade to PRO for unlimited file size.', 'royal-backup-reset' ) );
+		}
+
+		if ( function_exists( 'set_time_limit' ) ) {
+			@set_time_limit( 900 ); // phpcs:ignore Generic.PHP.NoSilencedErrors.Discouraged -- Suppress errors from disabled set_time_limit
+		}
+
+		if ( empty( $_FILES['backup_file'] ) ) {
+			$upload_max = ini_get( 'upload_max_filesize' );
+			wp_send_json_error(
+				sprintf(
+					/* translators: %s: Server upload_max_filesize value */
+					esc_html__( 'No file was uploaded. The file may exceed the server upload limit (upload_max_filesize: %s).', 'royal-backup-reset' ),
+					$upload_max
+				)
+			);
+		}
+
+		$file = $_FILES['backup_file'];
+
+		// Check for upload errors.
+		if ( ! empty( $file['error'] ) ) {
+			$upload_max = ini_get( 'upload_max_filesize' );
+			$post_max   = ini_get( 'post_max_size' );
+			$upload_errors = array(
+				/* translators: 1: upload_max_filesize value, 2: post_max_size value */
+				UPLOAD_ERR_INI_SIZE   => sprintf( esc_html__( 'File exceeds server upload size limit (upload_max_filesize: %1$s, post_max_size: %2$s). Please increase these values in php.ini or contact your hosting provider.', 'royal-backup-reset' ), $upload_max, $post_max ),
+				UPLOAD_ERR_FORM_SIZE  => esc_html__( 'File exceeds form upload size limit.', 'royal-backup-reset' ),
+				UPLOAD_ERR_PARTIAL    => esc_html__( 'File was only partially uploaded.', 'royal-backup-reset' ),
+				UPLOAD_ERR_NO_FILE    => esc_html__( 'No file was uploaded.', 'royal-backup-reset' ),
+				UPLOAD_ERR_NO_TMP_DIR => esc_html__( 'Server missing temporary folder.', 'royal-backup-reset' ),
+				UPLOAD_ERR_CANT_WRITE => esc_html__( 'Failed to write file to disk.', 'royal-backup-reset' ),
+			);
+			$error_msg = isset( $upload_errors[ $file['error'] ] ) ? $upload_errors[ $file['error'] ] : esc_html__( 'Unknown upload error.', 'royal-backup-reset' );
+			wp_send_json_error( $error_msg );
+		}
+
+		// Validate filename matches backup naming pattern.
+		$filename = sanitize_file_name( $file['name'] );
+		if ( ! preg_match( '/^backup_[\d]{4}-[\d]{2}-[\d]{2}-[\d]{4}_.*_[a-f0-9]{12}-(db|plugins|themes|uploads|others|wpcore)(\d+)?\.(zip|gz)$/i', $filename ) ) {
+			wp_send_json_error( esc_html__( 'Invalid backup file. The filename does not match the expected backup format.', 'royal-backup-reset' ) );
+		}
+
+		// Ensure backup directory exists.
+		if ( ! file_exists( ROYALBR_BACKUP_DIR ) ) {
+			wp_mkdir_p( ROYALBR_BACKUP_DIR );
+		}
+
+		$backup_dir = trailingslashit( ROYALBR_BACKUP_DIR );
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_is_dir -- Required for backup directory validation
+		if ( ! is_dir( $backup_dir ) || ! wp_is_writable( $backup_dir ) ) {
+			wp_send_json_error( esc_html__( 'Backup directory is not writable.', 'royal-backup-reset' ) );
+		}
+
+		// Free users: enforce 200MB total size limit across all files in the same backup.
+		if ( ! $is_premium && preg_match( '/_([a-f0-9]{12})-(db|plugins|themes|uploads|others|wpcore)/', $filename, $size_nonce_match ) ) {
+			$check_nonce     = $size_nonce_match[1];
+			$existing_total  = 0;
+			$existing_files  = glob( $backup_dir . '*_' . $check_nonce . '-*' );
+			if ( is_array( $existing_files ) ) {
+				foreach ( $existing_files as $existing_file ) {
+					$existing_total += filesize( $existing_file );
+				}
+			}
+			$new_total = $existing_total + $file['size'];
+			if ( $new_total > 209715200 ) {
+				wp_send_json_error( esc_html__( 'Total backup size exceeds the 200 MB limit. Upgrade to PRO for unlimited file size.', 'royal-backup-reset' ) );
+			}
+		}
+
+		$destination = $backup_dir . $filename;
+
+		// Move uploaded file to backup directory.
+		// phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- Suppress move_uploaded_file errors for user-friendly handling
+		if ( ! @move_uploaded_file( $file['tmp_name'], $destination ) ) {
+			wp_send_json_error( esc_html__( 'Failed to move uploaded file.', 'royal-backup-reset' ) );
+		}
+
+		// Set proper file permissions.
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_chmod -- Required for backup file permissions
+		@chmod( $destination, 0644 );
+
+		// Extract nonce from filename and track as migration upload.
+		if ( preg_match( '/_([a-f0-9]{12})-(db|plugins|themes|uploads|others|wpcore)/', $filename, $nonce_match ) ) {
+			$upload_nonce      = $nonce_match[1];
+			$migration_uploads = get_option( 'royalbr_migration_upload_nonces', array() );
+			if ( ! in_array( $upload_nonce, $migration_uploads, true ) ) {
+				$migration_uploads[] = $upload_nonce;
+				update_option( 'royalbr_migration_upload_nonces', $migration_uploads );
+			}
+		}
+
+		wp_send_json_success( array(
+			'filename' => $filename,
+		) );
+	}
+
+	/**
 	 * AJAX handler to get simplified backup list for hover popup.
 	 *
 	 * Returns array of backups with only essential data (nonce, timestamp, display name).
@@ -3456,6 +3914,23 @@ class RoyalBackupReset {
 						<?php if ( ! $is_premium_restore ) : ?>
 						<p class="description" style="margin-top: 15px;"><?php esc_html_e( 'Free version restores all available components. Upgrade to PRO to select specific items.', 'royal-backup-reset' ); ?></p>
 						<?php endif; ?>
+						<div id="royalbr-migration-option" class="royalbr-migration-option" style="display:none;">
+							<div class="royalbr-restore-item royalbr-migration-notice-item <?php echo $is_premium_restore ? '' : 'royalbr-pro-option-disabled'; ?>">
+								<label>
+									<input type="checkbox" class="royalbr-custom-checkbox" id="royalbr_restorer_replacesiteurl" value="1" <?php echo $is_premium_restore ? 'checked' : 'disabled'; ?>>
+									<div class="royalbr-restore-item-content">
+										<strong>
+											<?php esc_html_e( 'Search and replace site location in the database (migrate)', 'royal-backup-reset' ); ?>
+											<?php if ( ! $is_premium_restore ) : ?>
+												<a href="#" class="royalbr-pro-badge"><?php esc_html_e( 'PRO', 'royal-backup-reset' ); ?></a>
+											<?php endif; ?>
+										</strong>
+										<p class="description" id="royalbr-migration-description"></p>
+									</div>
+								</label>
+							</div>
+						</div>
+						<div id="royalbr-migration-size-info" class="royalbr-migration-size-info" style="display:none;"></div>
 					</form>
 				</div>
 				<div class="royalbr-modal-footer royalbr-modal-footer-with-link">
@@ -3673,6 +4148,26 @@ class RoyalBackupReset {
 				$components = array( 'db', 'plugins', 'themes', 'uploads', 'others', 'wpcore' );
 			}
 
+			// Free users: enforce 200MB total size limit for migration backups.
+			$is_premium_check = function_exists( 'royalbr_fs' ) && royalbr_fs()->can_use_premium_code();
+			if ( ! $is_premium_check ) {
+				$migration_uploads_check = get_option( 'royalbr_migration_upload_nonces', array() );
+				$backup_set_check        = ROYALBR_Backup_History::get_history( $timestamp );
+				if ( ! empty( $backup_set_check['nonce'] ) && in_array( $backup_set_check['nonce'], $migration_uploads_check, true ) ) {
+					$backup_dir_check = trailingslashit( ROYALBR_BACKUP_DIR );
+					$total_size_check = 0;
+					$nonce_files      = glob( $backup_dir_check . '*_' . $backup_set_check['nonce'] . '-*' );
+					if ( is_array( $nonce_files ) ) {
+						foreach ( $nonce_files as $nonce_file ) {
+							$total_size_check += filesize( $nonce_file );
+						}
+					}
+					if ( $total_size_check > 209715200 ) {
+						wp_send_json_error( esc_html__( 'Total backup size exceeds the 200 MB limit. Upgrade to PRO for unlimited file size.', 'royal-backup-reset' ) );
+					}
+				}
+			}
+
 			// Create unique restore session identifier
 			$this->file_nonce = $this->backup_time_nonce();
 
@@ -3682,6 +4177,15 @@ class RoyalBackupReset {
 			$this->save_task_data( 'task_time_ms', $this->task_time_ms );
 			$this->save_task_data( 'backup_timestamp', $timestamp );
 			$this->save_task_data( 'restore_components', $components );
+
+			// Save restore options (migration checkbox, etc.)
+			$restore_options = array();
+			if ( ! empty( $_REQUEST['royalbr_restorer_replacesiteurl'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Nonce verified earlier
+				$restore_options['royalbr_restorer_replacesiteurl'] = true;
+			}
+			if ( ! empty( $restore_options ) ) {
+				$this->save_task_data( 'restore_options', $restore_options );
+			}
 
 			// Flag restore as active
 			update_site_option( 'royalbr_restore_in_progress', $this->file_nonce );
@@ -3750,8 +4254,14 @@ class RoyalBackupReset {
 		global $royalbr_restore_instance;
 		$royalbr_restore_instance = $restore_handler;
 
+		// Load restore options from task data (migration checkbox, etc.)
+		$restore_options = $this->retrieve_task_data( 'restore_options' );
+		if ( ! is_array( $restore_options ) ) {
+			$restore_options = array();
+		}
+
 		// Execute restore with progress streaming.
-		$result = $restore_handler->restore_backup_session( $backup_timestamp, $components );
+		$result = $restore_handler->restore_backup_session( $backup_timestamp, $components, $restore_options );
 
 		// Evaluate restore operation result.
 		$success = false;
@@ -3794,6 +4304,10 @@ class RoyalBackupReset {
 			echo '<p class="royalbr_restore_successful"><strong>';
 			echo esc_html__( 'Site Restored Successfuly', 'royal-backup-reset' );
 			echo '</strong></p>';
+			$auto_login_token = $restore_handler->auto_login_token;
+			if ( $auto_login_token ) {
+				echo '<input type="hidden" id="royalbr_auto_login_token" value="' . esc_attr( $auto_login_token ) . '">';
+			}
 		} else {
 			echo '<p class="royalbr_restore_error">';
 			echo esc_html__( 'Restoration process failed', 'royal-backup-reset' );

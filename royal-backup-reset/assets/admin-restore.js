@@ -112,6 +112,16 @@ jQuery(function($) {
 			$steps_list.siblings('h2').hide();
 
 			if ($successResult.length) {
+				// Append auto-login token to "Return to Admin Page" link
+				var tokenInput = doc.getElementById('royalbr_auto_login_token');
+				if (tokenInput && tokenInput.value) {
+					var $returnLink = $completion.find('a.button-primary');
+					if ($returnLink.length) {
+						var href = $returnLink.attr('href');
+						var separator = href.indexOf('?') !== -1 ? '&' : '?';
+						$returnLink.attr('href', href + separator + 'royalbr_auto_login=' + encodeURIComponent(tokenInput.value));
+					}
+				}
 				// Success
 				$result_output.find('.dashicons').addClass('dashicons-yes');
 				$result_output.find('.royalbr-restore-result--text').text($successResult.text());

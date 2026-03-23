@@ -33,6 +33,9 @@ if ( ! defined( 'ABSPATH' ) ) {
             <a href="#restore-website" class="royalbr-nav-tab" data-tab="restore-website">
                 <?php esc_html_e('Restore Site', 'royal-backup-reset'); ?>
             </a>
+            <a href="#migration" class="royalbr-nav-tab" data-tab="migration">
+                <?php esc_html_e('Migration', 'royal-backup-reset'); ?>
+            </a>
             <a href="#reset-database" class="royalbr-nav-tab" data-tab="reset-database">
                 <?php esc_html_e('Database Reset', 'royal-backup-reset'); ?>
             </a>
@@ -138,6 +141,78 @@ if ( ! defined( 'ABSPATH' ) ) {
 
                 <div id="royalbr-backup-list">
                     <?php $this->display_backup_table(); ?>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Migration Tab -->
+        <div id="migration" class="royalbr-tab-content">
+            <div class="royalbr-card royalbr-migration-card">
+                <h2><?php esc_html_e( 'Migration', 'royal-backup-reset' ); ?></h2>
+                <p class="royalbr-description"><?php esc_html_e( 'Move your WordPress site from one location to another in 4 simple steps:', 'royal-backup-reset' ); ?></p>
+                <p class="royalbr-description" style="margin-left: 1em;">
+                    <?php
+                    printf(
+                        /* translators: 1: opening bold tag, 2: closing bold tag */
+                        esc_html__( '1. Create a full backup on %1$sSite A%2$s (your current/old site) using the Create Backup tab.', 'royal-backup-reset' ),
+                        '<strong>',
+                        '</strong>'
+                    );
+                    ?>
+                    <br>
+                    <?php
+                    printf(
+                        /* translators: 1: opening bold tag, 2: closing bold tag */
+                        esc_html__( '2. Download all backup components from %1$sSite A%2$s (Database, Plugins, Themes, Uploads, etc.).', 'royal-backup-reset' ),
+                        '<strong>',
+                        '</strong>'
+                    );
+                    ?>
+                    <br>
+                    <?php
+                    printf(
+                        /* translators: 1: opening bold tag, 2: closing bold tag */
+                        esc_html__( '3. Install this plugin on %1$sSite B%2$s (your new site), then upload the backup files here.', 'royal-backup-reset' ),
+                        '<strong>',
+                        '</strong>'
+                    );
+                    ?>
+                    <br>
+                    <?php
+                    printf(
+                        /* translators: 1: opening bold tag, 2: closing bold tag */
+                        esc_html__( '4. Click Restore on %1$sSite B%2$s — all URLs and database references are updated automatically.', 'royal-backup-reset' ),
+                        '<strong>',
+                        '</strong>'
+                    );
+                    ?>
+                </p>
+
+                <div class="royalbr-rescan-remote-wrapper">
+                    <?php if ( $is_premium ) : ?>
+                    <button type="button" id="royalbr-rescan-remote-btn" class="royalbr-button-secondary royalbr-rescan-remote-btn">
+                        <span class="dashicons dashicons-cloud"></span>
+                        <?php esc_html_e( 'Scan Remote Storage', 'royal-backup-reset' ); ?>
+                    </button>
+                    <?php endif; ?>
+                    <button type="button" id="royalbr-upload-backup-btn" class="royalbr-button-secondary royalbr-rescan-remote-btn">
+                        <span class="dashicons dashicons-upload"></span>
+                        <?php esc_html_e( 'Upload Backup Files', 'royal-backup-reset' ); ?>
+                    </button>
+                    <input type="file" id="royalbr-upload-backup-input" multiple accept=".zip,.gz,.sql,.tar" style="display:none;" />
+                    <span id="royalbr-rescan-remote-status" class="royalbr-rescan-status"></span>
+                </div>
+
+                <?php if ( ! $is_premium ) : ?>
+                <p class="royalbr-description royalbr-migration-limit-note">
+                    <?php esc_html_e( 'Free version supports backups up to 200 MB.', 'royal-backup-reset' ); ?>
+                    <a href="#" class="royalbr-pro-badge" data-pro-option-name="<?php esc_attr_e( 'Migration above 200 MB', 'royal-backup-reset' ); ?>"><?php esc_html_e( 'PRO', 'royal-backup-reset' ); ?></a>
+                </p>
+                <?php endif; ?>
+
+                <div id="royalbr-migration-list">
+                    <?php $this->display_migration_table(); ?>
                 </div>
             </div>
         </div>
@@ -547,15 +622,6 @@ if ( ! defined( 'ABSPATH' ) ) {
         <div id="free-vs-pro" class="royalbr-tab-content">
             <div class="royalbr-premium-section">
 
-                <!-- Trial Request -->
-<!--                 <div class="royalbr-trial-request">
-                    <h3><?php esc_html_e( 'Try Premium for Free', 'royal-backup-reset' ); ?></h3>
-                    <p><?php printf( esc_html__( 'Experience the full power of Royal Backup with a Free trial — %sno risk, no payment%s.', 'royal-backup-reset' ), '<strong>', '</strong>' ); ?></p>
-                    <a href="https://checkout.freemius.com/plugin/21745/plan/36290/?trial=free" target="_blank" rel="noopener noreferrer" class="button button-primary royalbr-trial-btn">
-                        <?php esc_html_e( 'Start Free Trial', 'royal-backup-reset' ); ?> <span class="dashicons dashicons-external"></span>
-                    </a>
-                </div> -->
-
                 <!-- Video Overview -->
                 <div class="royalbr-promo-video">
                     <iframe src="https://www.youtube.com/embed/toQF4kf02nU" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
@@ -655,6 +721,16 @@ if ( ! defined( 'ABSPATH' ) ) {
                                 <td>
                                     <span class="dashicons dashicons-yes royalbr-yes" aria-label="<?php esc_attr_e( 'Yes', 'royal-backup-reset' ); ?>"></span>
                                 </td>
+                            </tr>
+
+                            <!-- Feature: Migration (Pro Only) -->
+                            <tr>
+                                <td>
+                                    <h4><?php esc_html_e( 'Migration', 'royal-backup-reset' ); ?></h4>
+                                    <p><?php esc_html_e( 'Restore backups from other sites, scan remote storage for backups, or upload backup files directly.', 'royal-backup-reset' ); ?></p>
+                                </td>
+                                <td><span class="royalbr-limited"><?php esc_html_e( 'Up to 200 MB', 'royal-backup-reset' ); ?></span></td>
+                                <td><span class="royalbr-unlimited"><?php esc_html_e( 'Unlimited', 'royal-backup-reset' ); ?></span></td>
                             </tr>
 
                             <!-- Feature: Google Drive (Pro Only) -->

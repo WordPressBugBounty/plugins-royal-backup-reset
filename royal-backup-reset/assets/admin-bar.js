@@ -897,9 +897,16 @@ jQuery(document).ready(function($) {
     function setupRestoreProgressModalHandlers() {
         // Handle Done button
         $('#royalbr-progress-done').on('click', function() {
-            $('#royalbr-progress-modal').hide();
-            // Refresh page after restore complete
-            location.reload();
+            var $modal = $('#royalbr-progress-modal');
+            $modal.hide();
+            // Redirect with auto-login token if available, otherwise reload
+            var token = $modal.data('royalbr-auto-login-token');
+            if (token) {
+                var separator = location.href.indexOf('?') !== -1 ? '&' : '?';
+                location.href = location.href.split('#')[0] + separator + 'royalbr_auto_login=' + encodeURIComponent(token);
+            } else {
+                location.reload();
+            }
         });
 
         // Handle View Activity Log button
@@ -1144,6 +1151,12 @@ jQuery(document).ready(function($) {
                 $progressModal.find('li.active').removeClass('active').addClass('done');
 
                 if ($successResult.length) {
+                    // Store auto-login token for use when "Done" is clicked
+                    var tokenInput = doc.getElementById('royalbr_auto_login_token');
+                    if (tokenInput && tokenInput.value) {
+                        $progressModal.data('royalbr-auto-login-token', tokenInput.value);
+                    }
+
                     // Success - hide component list and subtitle, update header to "Restore Finished"
                     $progressModal.find('.royalbr-restore-components-list').hide();
                     $progressModal.find('.royalbr-modal-header').css('justify-content', 'center');
