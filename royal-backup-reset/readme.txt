@@ -1,7 +1,7 @@
 === Royal Wordpress Backup, Restore & Migration Plugin - Backup Wordpress Sites Safely ===
 Contributors: wproyal
 Tags: backup plugin, wordpress backup, database backup, restore, migrate
-Stable tag: 1.0.20
+Stable tag: 1.0.21
 Requires at least: 5.0
 Tested up to: 6.9.4
 Requires PHP: 7.4
@@ -143,6 +143,9 @@ This feature is mainly for testers or for those who want to reset Wordpress to f
 6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.21 =
+* Minor Improvements.
+
 = 1.0.20 =
 * Added Website Migration Feature.
 

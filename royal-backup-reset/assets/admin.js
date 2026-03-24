@@ -2491,8 +2491,14 @@ jQuery(document).ready(function($) {
                 componentsHTML += '</li>';
             }
 
+            // For migration restores (remote-only), exclude wpcore from display
+            var displayComponents = components;
+            if (!hasLocal && hasRemote) {
+                displayComponents = components.filter(function(c) { return c !== 'wpcore'; });
+            }
+
             // Add selected components
-            $.each(components, function(index, component) {
+            $.each(displayComponents, function(index, component) {
                 if (componentDefinitions[component]) {
                     var def = componentDefinitions[component];
                     componentsHTML += '<li data-component="' + component + '">';

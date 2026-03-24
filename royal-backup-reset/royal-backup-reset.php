@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.20
+ * Version: 1.0.21
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.4
@@ -35,6 +35,7 @@ add_filter( 'fs_redirect_on_activation_royal-backup-reset', 'royalbr_maybe_skip_
  * @param bool $redirect Whether to redirect.
  * @return bool False to prevent redirect, original value otherwise.
  */
+if ( ! function_exists( 'royalbr_maybe_skip_activation_redirect' ) ) {
 function royalbr_maybe_skip_activation_redirect( $redirect ) {
 	// Check if we're returning from a template edit flow.
 	// The wpr_pending_template parameter now contains the edit URL (not just "1").
@@ -42,6 +43,7 @@ function royalbr_maybe_skip_activation_redirect( $redirect ) {
 		return false; // Prevent redirect.
 	}
 	return $redirect;
+}
 }
 
 // Prevent dual loading - if core already loaded by another version, bail out
@@ -210,7 +212,7 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.20' );
+	define( 'ROYALBR_VERSION', '1.0.21' );
 }
 
 // Maximum migration file size for free users (200 MB).
@@ -1170,6 +1172,19 @@ class RoyalBackupReset {
 					wp_send_json_error( esc_html__( 'Total backup size exceeds the 200 MB limit. Upgrade to PRO for unlimited file size.', 'royal-backup-reset' ) );
 				}
 			}
+		}
+
+		// Migration backups: exclude WordPress Core to prevent overwriting core files.
+		$migration_uploads_check = get_option( 'royalbr_migration_upload_nonces', array() );
+		$backup_set_migration    = ROYALBR_Backup_History::get_history( $timestamp );
+		$is_migration_restore    = false;
+		if ( ! empty( $backup_set_migration['nonce'] ) ) {
+			$backup_storage = isset( $backup_set_migration['storage_locations'] ) ? $backup_set_migration['storage_locations'] : array();
+			$is_migration_restore = in_array( $backup_set_migration['nonce'], $migration_uploads_check, true )
+				|| ( ! in_array( 'local', $backup_storage, true ) && ( in_array( 'gdrive', $backup_storage, true ) || in_array( 'dropbox', $backup_storage, true ) || in_array( 's3', $backup_storage, true ) ) );
+		}
+		if ( $is_migration_restore ) {
+			$components = array_diff( $components, array( 'wpcore' ) );
 		}
 
 		// Store current user info before restore
@@ -4166,6 +4181,19 @@ class RoyalBackupReset {
 						wp_send_json_error( esc_html__( 'Total backup size exceeds the 200 MB limit. Upgrade to PRO for unlimited file size.', 'royal-backup-reset' ) );
 					}
 				}
+			}
+
+			// Migration backups: exclude WordPress Core to prevent overwriting core files.
+			$migration_uploads_ajax = get_option( 'royalbr_migration_upload_nonces', array() );
+			$backup_set_ajax        = ROYALBR_Backup_History::get_history( $timestamp );
+			$is_migration_ajax      = false;
+			if ( ! empty( $backup_set_ajax['nonce'] ) ) {
+				$backup_storage_ajax = isset( $backup_set_ajax['storage_locations'] ) ? $backup_set_ajax['storage_locations'] : array();
+				$is_migration_ajax = in_array( $backup_set_ajax['nonce'], $migration_uploads_ajax, true )
+					|| ( ! in_array( 'local', $backup_storage_ajax, true ) && ( in_array( 'gdrive', $backup_storage_ajax, true ) || in_array( 'dropbox', $backup_storage_ajax, true ) || in_array( 's3', $backup_storage_ajax, true ) ) );
+			}
+			if ( $is_migration_ajax ) {
+				$components = array_diff( $components, array( 'wpcore' ) );
 			}
 
 			// Create unique restore session identifier
