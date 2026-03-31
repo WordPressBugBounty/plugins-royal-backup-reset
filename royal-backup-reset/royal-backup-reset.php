@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.21
+ * Version: 1.0.22
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.4
@@ -212,7 +212,7 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.21' );
+	define( 'ROYALBR_VERSION', '1.0.22' );
 }
 
 // Maximum migration file size for free users (200 MB).

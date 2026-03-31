@@ -1,7 +1,7 @@
 === Royal Wordpress Backup, Restore & Migration Plugin - Backup Wordpress Sites Safely ===
 Contributors: wproyal
 Tags: backup plugin, wordpress backup, database backup, restore, migrate
-Stable tag: 1.0.21
+Stable tag: 1.0.22
 Requires at least: 5.0
 Tested up to: 6.9.4
 Requires PHP: 7.4
@@ -27,7 +27,7 @@ You can also securely store backups in **cloud storage** (PRO version) such as G
 * **Unique Feature - Backup Notification During Theme or Plugin Updates or Installation - No other plugin offers this feature** - ⏩ [See Video](https://www.youtube.com/watch?v=4SZ9r8mOt1M&t=27s). Plugin will remind you to make wordpress backup before activating or updating themes or plugins.
 * **Full Website Backups** - Backup your entire WordPress website including database, plugins, themes, uploads, and other files.
 * **Full Website Restore** - Restore your entire WordPress website including database, plugins, themes, uploads, and other files.
-* **Full Website Migration - Clone** - Migrate, clone or copy any website from staging website to Live Website easily.
+* **Full Website Migration - Clone** - ⏩ [See Video](https://www.youtube.com/watch?v=s6PTN52Ykr0) Migrate, clone or copy any website from staging website to Live Website easily.
 * **Assign Custom Names to your Backups** - Assign custom names to wordpress backups for easy identification and organization.
 * **Backup Component Downloads** - Download individual wordpress backup components such as the database, plugins, themes, and more.
 * **Background Backup** - Feel free to refresh or close the browser window during wordpress backups — this won’t break the backup process.
@@ -38,6 +38,10 @@ You can also securely store backups in **cloud storage** (PRO version) such as G
 = ✅Video overview of Backup Notification During Theme or Plugin Updates =
 
 https://www.youtube.com/watch?v=4SZ9r8mOt1M
+
+= ✅Migration Overview (Quick Guide) =
+
+https://www.youtube.com/watch?v=s6PTN52Ykr0
 
 = 🌟Key Features of PRO Version =
 
@@ -143,6 +147,9 @@ This feature is mainly for testers or for those who want to reset Wordpress to f
 6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.22 =
+* Minor Improvements.
+
 = 1.0.21 =
 * Minor Improvements.
 

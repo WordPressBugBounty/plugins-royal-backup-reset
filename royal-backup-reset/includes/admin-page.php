@@ -149,7 +149,11 @@ if ( ! defined( 'ABSPATH' ) ) {
         <!-- Migration Tab -->
         <div id="migration" class="royalbr-tab-content">
             <div class="royalbr-card royalbr-migration-card">
-                <h2><?php esc_html_e( 'Migration', 'royal-backup-reset' ); ?></h2>
+                <h2><?php esc_html_e( 'Migration', 'royal-backup-reset' ); ?>
+                    <a href="https://www.youtube.com/watch?v=s6PTN52Ykr0" target="_blank" class="royalbr-video-tutorial-btn">
+                        <span class="dashicons dashicons-video-alt3"></span> <?php esc_html_e( 'Video Tutorial', 'royal-backup-reset' ); ?>
+                    </a>
+                </h2>
                 <p class="royalbr-description"><?php esc_html_e( 'Move your WordPress site from one location to another in 4 simple steps:', 'royal-backup-reset' ); ?></p>
                 <p class="royalbr-description" style="margin-left: 1em;">
                     <?php

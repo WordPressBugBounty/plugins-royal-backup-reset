@@ -2710,6 +2710,29 @@ ul.royalbr-restore-components-list li.error::after {
     height: 14px;
 }
 
+.royalbr-video-tutorial-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    font-weight: normal;
+    color: #cc0000;
+    text-decoration: none;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.royalbr-video-tutorial-btn:hover {
+    color: #990000;
+    text-decoration: underline;
+}
+
+.royalbr-video-tutorial-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
 .royalbr-reminder-actions {
     display: flex;
     justify-content: space-between;
