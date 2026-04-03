@@ -4,7 +4,7 @@
  * Plugin URI: http://wordpress.org/plugins/royal-backup-reset/
  * Description: Complete backup, restore and reset functionality for WordPress websites.
  * Author: wproyal
- * Version: 1.0.22
+ * Version: 1.0.24
  * Requires at least: 5.0
  * Requires PHP: 7.4
  * Tested up to: 6.9.4
@@ -212,7 +212,7 @@ if ( ! defined( 'ROYALBR_PLUGIN_DIR' ) ) {
 
 // Set plugin version for asset cache busting and compatibility checks.
 if ( ! defined( 'ROYALBR_VERSION' ) ) {
-	define( 'ROYALBR_VERSION', '1.0.22' );
+	define( 'ROYALBR_VERSION', '1.0.24' );
 }
 
 // Maximum migration file size for free users (200 MB).
@@ -847,11 +847,11 @@ class RoyalBackupReset {
 
 		// Handle array format (new) or string format (legacy).
 		if ( is_array( $pending_template_data ) ) {
-			$pending_template_edit = ! empty( $pending_template_data['url'] ) ? $pending_template_data['url'] : false;
-			$pending_template_name = ! empty( $pending_template_data['name'] ) ? $pending_template_data['name'] : '';
+			$pending_template_edit = ! empty( $pending_template_data['url'] ) ? esc_url( $pending_template_data['url'] ) : false;
+			$pending_template_name = ! empty( $pending_template_data['name'] ) ? sanitize_text_field( $pending_template_data['name'] ) : '';
 		} elseif ( ! empty( $pending_template_data ) ) {
 			// Legacy string format (just URL).
-			$pending_template_edit = $pending_template_data;
+			$pending_template_edit = esc_url( $pending_template_data );
 		}
 
 		// Also check for URL parameters (in case transient was already cleared).
@@ -862,9 +862,10 @@ class RoyalBackupReset {
 
 		if ( ! $pending_template_edit && isset( $_GET['wpr_pending_template'] ) && ! $is_back_from_editor ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$param_value = sanitize_text_field( wp_unslash( $_GET['wpr_pending_template'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			// If it's a valid URL, use it; otherwise just mark as pending
+			// If it's a valid URL, use it; otherwise just mark as pending.
+			// Use esc_url() to reject javascript: URIs and other unsafe schemes.
 			if ( filter_var( $param_value, FILTER_VALIDATE_URL ) || strpos( $param_value, 'post.php' ) !== false ) {
-				$pending_template_edit = $param_value;
+				$pending_template_edit = esc_url( $param_value );
 			} else {
 				$pending_template_edit = true;
 			}
@@ -1279,6 +1280,14 @@ class RoyalBackupReset {
 
 		if ( ! file_exists( $file_path ) ) {
 			wp_die( esc_html__( 'Requested file does not exist.', 'royal-backup-reset' ) );
+		}
+
+		// Security: Ensure the file is within the backup directory.
+		$real_file_path  = realpath( $file_path );
+		$real_backup_dir = realpath( $backup_dir );
+
+		if ( false === $real_file_path || false === $real_backup_dir || 0 !== strpos( $real_file_path, $real_backup_dir ) ) {
+			wp_die( esc_html__( 'Invalid file path.', 'royal-backup-reset' ) );
 		}
 
 		// Clean ALL output buffers before sending file headers.

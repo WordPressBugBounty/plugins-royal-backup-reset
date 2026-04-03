@@ -153,7 +153,7 @@ class RoyalBR_Rating_Notice {
 			return;
 		}
 
-		$review_url = 'https://wordpress.org/support/plugin/royal-backup-reset/reviews/?filter=5#new-post';
+		$review_url = 'https://wordpress.org/support/plugin/royal-backup-reset/reviews/#new-post';
 		$logo_url   = ROYALBR_ASSETS_URL . 'images/logo.png';
 		?>
 		<div class="notice royalbr-rating-notice is-dismissible">
