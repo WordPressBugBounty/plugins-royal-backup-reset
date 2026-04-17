@@ -628,7 +628,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
                 <!-- Video Overview -->
                 <div class="royalbr-promo-video">
-                    <iframe src="https://www.youtube.com/embed/toQF4kf02nU" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <iframe src="https://www.youtube.com/embed/ALQpJImxt_w" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
                 </div>
 
                 <!-- Features Comparison Table -->

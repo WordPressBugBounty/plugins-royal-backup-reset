@@ -1,7 +1,7 @@
 === Royal Wordpress Backup, Restore & Migration Plugin - Backup Wordpress Sites Safely ===
 Contributors: wproyal
 Tags: backup plugin, wordpress backup, database backup, restore, migrate
-Stable tag: 1.0.24
+Stable tag: 1.0.25
 Requires at least: 5.0
 Tested up to: 6.9.4
 Requires PHP: 7.4
@@ -45,7 +45,7 @@ https://www.youtube.com/watch?v=-PR0DspR6BY
 
 = 🌟Key Features of PRO Version =
 
-https://www.youtube.com/watch?v=toQF4kf02nU
+https://www.youtube.com/watch?v=ALQpJImxt_w
 
 * **Backup Core Wordpress Files** - Backup all core WordPress files including wp-admin, wp-includes, and essential root files such as wp-config.php, .htaccess, and more. If something damages or alters these core files — such as viruses, hacker attacks, plugin updates, theme changes, or WordPress updates — you can always revert and restore the original WordPress files.
 * **Schedule Backups** - Schedule backup to run every 1 hour, 12 hours, daily, weekly, once every two weeks and monthly. So you can ‘set and forget’ about Backups. Backup Schedule can be configured for Files and databases separately.
@@ -147,6 +147,9 @@ This feature is mainly for testers or for those who want to reset Wordpress to f
 6. Mini Database Reset Icon
 
 == Changelog ==
+= 1.0.25 =
+* Video Tutorial Renewed.
+
 = 1.0.24 =
 * Minor Improvements.
 
